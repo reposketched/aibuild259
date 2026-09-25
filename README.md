@@ -27,7 +27,19 @@ BorrowBloc is a lightweight, zero-auth inventory and lending tracker designed to
 ## Project Structure
 
 ```text
-borrowbloc/
-├── index.html       # Main single-file frontend & dashboard logic
-├── README.md        # Project documentation
-└── assets/          # (Optional) Mock screenshots or icons
+aibuild259/
+├── index.html          # Single-file frontend & dashboard logic (runs in demo mode out of the box)
+├── apps-script/
+│   └── Code.gs         # Google Apps Script backend for the Inventory sheet
+├── specsheet.txt       # Hackathon spec
+└── README.md           # Project documentation
+```
+
+---
+
+## Quick Start
+
+1. Open `index.html` in a browser. With no backend configured it runs on demo data.
+2. To go live: create a Google Sheet with an `Inventory` tab (headers: ID, Tool Name, Category, Status, Borrower, Due Date).
+3. Extensions → Apps Script → paste `apps-script/Code.gs` → Deploy as a Web app (Execute as: Me, Access: Anyone).
+4. Paste the `/exec` URL into `SHEET_ENDPOINT` at the top of the script in `index.html`.
