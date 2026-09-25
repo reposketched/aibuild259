@@ -3,7 +3,8 @@
 // Copy the /exec URL into SHEET_ENDPOINT in index.html.
 //
 // Expects a tab named "Inventory" with headers in row 1:
-// ID | Tool Name | Category | Status | Borrower | Due Date
+// ID | Tool Name | Category | Status | Borrower | Due Date | Photo | Owner
+// Photo holds a small base64 JPEG (the page keeps it under the 50k cell limit) or an https URL.
 
 const SHEET_NAME = 'Inventory';
 
@@ -31,6 +32,8 @@ function doGet() {
       status: r[3],
       borrower: r[4] === '—' ? '' : r[4],
       due: fmtDate_(r[5]),
+      photo: r[6] || '',
+      owner: r[7] || '',
     }));
   return json_({ tools });
 }
@@ -43,7 +46,8 @@ function doPost(e) {
     const sh = sheet_();
 
     if (body.action === 'add') {
-      sh.appendRow([body.id, clean_(body.name), clean_(body.category), 'Available', '—', '—']);
+      const id = Math.max(0, ...sh.getRange(2, 1, Math.max(sh.getLastRow() - 1, 1), 1).getValues().map(r => Number(r[0]) || 0)) + 1;
+      sh.appendRow([id, clean_(body.name), clean_(body.category), 'Available', '—', '—', photo_(body.photo), clean_(body.owner)]);
       return json_({ ok: true });
     }
 
@@ -56,6 +60,8 @@ function doPost(e) {
       if (sh.getRange(row, 4).getValue() === 'Checked Out') return json_({ ok: false, error: 'Already checked out' });
       // Store the due date as text so Sheets doesn't reformat it.
       sh.getRange(row, 4, 1, 3).setValues([['Checked Out', clean_(body.borrower), "'" + clean_(body.due)]]);
+    } else if (body.action === 'photo') {
+      sh.getRange(row, 7).setValue(photo_(body.photo));
     } else if (body.action === 'return') {
       sh.getRange(row, 4, 1, 3).setValues([['Available', '—', '—']]);
     } else {
@@ -67,6 +73,11 @@ function doPost(e) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function photo_(p) {
+  p = String(p || '');
+  return /^(data:image\/(png|jpe?g|webp|gif);base64,|https:\/\/)/.test(p) && p.length <= 50000 ? p : '';
 }
 
 // Strip leading formula characters so a borrower name can't become a sheet formula.

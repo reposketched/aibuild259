@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BorrowBloc - Neighborhood Tool Library</title>
+  <link id="favicon" rel="icon" type="image/png" href="favico.png" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
   <style>
@@ -20,21 +21,22 @@
 
   <!-- Navbar -->
   <nav class="bg-white/80 backdrop-blur border-b border-slate-200 sticky top-0 z-30">
-    <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
-      <div class="flex items-center gap-2.5">
-        <div class="w-9 h-9 rounded-xl bg-emerald-600 text-white grid place-items-center"><i data-lucide="hammer" class="w-5 h-5"></i></div>
-        <div>
+    <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div id="logo" class="w-9 h-9 shrink-0 rounded-xl bg-emerald-600 text-white grid place-items-center overflow-hidden"><i data-lucide="hammer" class="w-5 h-5"></i></div>
+        <div class="min-w-0">
           <div class="font-bold text-lg leading-tight">BorrowBloc</div>
           <div class="text-xs text-slate-500 leading-tight hidden sm:block">Neighborhood Tool Library</div>
         </div>
       </div>
-      <div class="flex items-center gap-3">
-        <span id="syncBadge" class="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
+      <div class="flex items-center gap-2 sm:gap-3">
+        <span id="syncBadge" class="hidden md:inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
           <span class="w-2 h-2 rounded-full bg-slate-400"></span> Connecting…
         </span>
         <button id="addBtn" class="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-700 text-white text-sm font-medium px-3 py-2 rounded-lg">
           <i data-lucide="plus" class="w-4 h-4"></i><span class="hidden sm:inline">Share a tool</span>
         </button>
+        <div id="account"></div>
       </div>
     </div>
   </nav>
@@ -42,7 +44,7 @@
   <main class="max-w-6xl mx-auto px-4 py-8">
     <!-- Hero -->
     <header class="mb-6">
-      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">Borrow it. Don't buy it.</h1>
+      <h1 id="greeting" class="text-2xl sm:text-3xl font-bold tracking-tight">Borrow it. Don't buy it.</h1>
       <p class="text-slate-500 mt-1">The average drill is used 13 minutes in its lifetime. Share what your street already owns.</p>
     </header>
 
@@ -71,23 +73,23 @@
     <section class="flex flex-col sm:flex-row gap-3 mb-6">
       <div class="relative flex-1">
         <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-        <input id="search" type="search" placeholder="Search tools or categories…"
+        <input id="search" type="search" placeholder="Search tools, categories or neighbors…"
           class="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500" />
       </div>
       <div id="filters" class="flex gap-2 overflow-x-auto"></div>
     </section>
 
     <!-- Grid -->
-    <section id="grid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></section>
+    <section id="grid" class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"></section>
     <div id="empty" class="hidden text-center py-16 text-slate-500">
       <i data-lucide="search-x" class="w-10 h-10 mx-auto mb-2 text-slate-300"></i>
-      No tools match your search.
+      <span id="emptyText">No tools match your search.</span>
     </div>
   </main>
 
   <!-- Modal -->
   <div id="modal" class="hidden fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm grid place-items-center p-4">
-    <div class="bg-white rounded-2xl w-full max-w-md shadow-xl card-enter" role="dialog" aria-modal="true">
+    <div class="bg-white rounded-2xl w-full max-w-md shadow-xl card-enter overflow-hidden max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true">
       <div id="modalBody"></div>
     </div>
   </div>
@@ -102,28 +104,45 @@
 const SHEET_ENDPOINT = '';
 const POLL_MS = 5000;
 const LOAN_DAYS = 7;
+const MAX_PHOTO_CHARS = 45000;   // a Google Sheets cell holds at most 50k characters
 
 // Rough retail prices, used for the "Saved by sharing" stat.
 const CATEGORY_META = {
-  'Power Tools':        { icon: 'drill',  value: 120, color: 'bg-sky-100 text-sky-700' },
-  'Gardening':          { icon: 'sprout', value: 80,  color: 'bg-lime-100 text-lime-700' },
-  'Yard & Maintenance': { icon: 'wrench', value: 150, color: 'bg-violet-100 text-violet-700' },
-  'Kitchen':            { icon: 'chef-hat', value: 60, color: 'bg-rose-100 text-rose-700' },
-  'Camping':            { icon: 'tent',   value: 100, color: 'bg-orange-100 text-orange-700' },
+  'Power Tools':        { icon: 'drill',    value: 120, color: 'bg-sky-100 text-sky-600' },
+  'Gardening':          { icon: 'sprout',   value: 80,  color: 'bg-lime-100 text-lime-600' },
+  'Yard & Maintenance': { icon: 'wrench',   value: 150, color: 'bg-violet-100 text-violet-600' },
+  'Kitchen':            { icon: 'chef-hat', value: 60,  color: 'bg-rose-100 text-rose-600' },
+  'Camping':            { icon: 'tent',     value: 100, color: 'bg-orange-100 text-orange-600' },
 };
-const DEFAULT_META = { icon: 'package', value: 50, color: 'bg-slate-100 text-slate-700' };
+const DEFAULT_META = { icon: 'package', value: 50, color: 'bg-slate-100 text-slate-600' };
 const meta = c => CATEGORY_META[c] || DEFAULT_META;
 
-const MOCK_DATA = [
-  { id: 1, name: 'Cordless Drill',     category: 'Power Tools',        status: 'Available',   borrower: '', due: '' },
-  { id: 2, name: 'Heavy-Duty Ladder',  category: 'Yard & Maintenance', status: 'Checked Out', borrower: 'Sarah Jenkins', due: '2026-10-02' },
-  { id: 3, name: 'Wheelbarrow',        category: 'Gardening',          status: 'Available',   borrower: '', due: '' },
-  { id: 4, name: 'Circular Saw',       category: 'Power Tools',        status: 'Available',   borrower: '', due: '' },
-  { id: 5, name: 'Pressure Washer',    category: 'Yard & Maintenance', status: 'Checked Out', borrower: 'Marcus Lee', due: '2026-09-20' },
-  { id: 6, name: 'Hedge Trimmer',      category: 'Gardening',          status: 'Available',   borrower: '', due: '' },
-  { id: 7, name: 'Stand Mixer',        category: 'Kitchen',            status: 'Available',   borrower: '', due: '' },
-  { id: 8, name: '4-Person Tent',      category: 'Camping',            status: 'Available',   borrower: '', due: '' },
+// Demo accounts: no passwords, just pick a neighbor.
+const DEMO_ACCOUNTS = [
+  { name: 'Sarah Jenkins', home: '#14 Maple St' },
+  { name: 'Marcus Lee',    home: '#22 Maple St' },
+  { name: 'Priya Patel',   home: '#9 Oak Ave' },
+  { name: 'Alex Kim',      home: '#31 Oak Ave' },
 ];
+const AVATAR_COLORS = ['bg-emerald-500', 'bg-sky-500', 'bg-violet-500', 'bg-amber-500', 'bg-rose-500', 'bg-teal-500'];
+
+const MOCK_DATA = [
+  { id: 1, name: 'Cordless Drill',    category: 'Power Tools',        status: 'Available',   borrower: '',              due: '',           owner: 'Marcus Lee',    photo: '' },
+  { id: 2, name: 'Heavy-Duty Ladder', category: 'Yard & Maintenance', status: 'Checked Out', borrower: 'Sarah Jenkins', due: '2026-10-02', owner: 'Priya Patel',   photo: '' },
+  { id: 3, name: 'Wheelbarrow',       category: 'Gardening',          status: 'Available',   borrower: '',              due: '',           owner: 'Alex Kim',      photo: '' },
+  { id: 4, name: 'Circular Saw',      category: 'Power Tools',        status: 'Available',   borrower: '',              due: '',           owner: 'Marcus Lee',    photo: '' },
+  { id: 5, name: 'Pressure Washer',   category: 'Yard & Maintenance', status: 'Checked Out', borrower: 'Marcus Lee',    due: '2026-09-20', owner: 'Sarah Jenkins', photo: '' },
+  { id: 6, name: 'Hedge Trimmer',     category: 'Gardening',          status: 'Available',   borrower: '',              due: '',           owner: 'Priya Patel',   photo: '' },
+  { id: 7, name: 'Stand Mixer',       category: 'Kitchen',            status: 'Available',   borrower: '',              due: '',           owner: 'Sarah Jenkins', photo: '' },
+  { id: 8, name: '4-Person Tent',     category: 'Camping',            status: 'Available',   borrower: '',              due: '',           owner: 'Alex Kim',      photo: '' },
+];
+
+// localStorage can throw (private mode, blocked storage), so every access is guarded.
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
 
 // ─── State ─────────────────────────────────────────────────────────────────
 let tools = [];
@@ -132,6 +151,8 @@ let activeCategory = 'All';
 let mode = SHEET_ENDPOINT ? 'live' : 'demo';
 let busy = false;           // pause polling while a write is in flight
 let flashId = null;
+let user = store.get('borrowbloc_user', null);
+let afterLogin = null;      // action to resume once someone signs in
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -140,13 +161,184 @@ const todayISO = () => localISO(new Date());
 const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return localISO(d); };
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
 const isOverdue = t => t.status === 'Checked Out' && t.due && t.due < todayISO();
+const safePhoto = p => /^(data:image\/(png|jpe?g|webp|gif);base64,|https:\/\/)/.test(p || '') ? p : '';
+const sameName = (a, b) => !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
+
+// ─── Branding: favico.png, or the hammer icon if it's missing ───────────────
+function setupBranding() {
+  const img = new Image();
+  img.onload = () => { $('logo').className = 'w-9 h-9 shrink-0 rounded-xl overflow-hidden bg-white'; $('logo').innerHTML = '<img src="favico.png" alt="BorrowBloc" class="w-full h-full object-cover" />'; };
+  img.onerror = () => {
+    try {
+      const svg = lucide.createElement(lucide.icons.Hammer);
+      svg.setAttribute('stroke', '#ffffff');
+      svg.setAttribute('width', '20'); svg.setAttribute('height', '20'); svg.setAttribute('x', '6'); svg.setAttribute('y', '6');
+      const icon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#059669"/>${new XMLSerializer().serializeToString(svg)}</svg>`;
+      $('favicon').type = 'image/svg+xml';
+      $('favicon').href = 'data:image/svg+xml,' + encodeURIComponent(icon);
+    } catch (e) { console.warn('favicon fallback failed', e); }
+  };
+  img.src = 'favico.png';
+}
+
+// ─── Accounts ──────────────────────────────────────────────────────────────
+function allAccounts() {
+  const extra = store.get('borrowbloc_accounts', []);
+  return [...DEMO_ACCOUNTS, ...extra.filter(a => !DEMO_ACCOUNTS.some(d => sameName(d.name, a.name)))];
+}
+function avatarColor(name) {
+  let h = 0; for (const c of name || '') h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+function initials(name) { return (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join(''); }
+function avatar(name, size = 'w-8 h-8 text-xs') {
+  return `<span class="${size} ${avatarColor(name)} shrink-0 rounded-full grid place-items-center text-white font-semibold">${esc(initials(name))}</span>`;
+}
+
+function signIn(account) {
+  user = { name: account.name, home: account.home || '' };
+  store.set('borrowbloc_user', user);
+  const extra = store.get('borrowbloc_accounts', []);
+  if (!allAccounts().some(a => sameName(a.name, user.name))) store.set('borrowbloc_accounts', [...extra, user]);
+  closeModal();
+  toast(`Welcome, ${user.name.split(' ')[0]}! 👋`);
+  render();
+  const next = afterLogin; afterLogin = null;
+  if (next) next();
+}
+function signOut() {
+  user = null; store.del('borrowbloc_user');
+  if (activeCategory === 'Mine') activeCategory = 'All';
+  render(); toast('Signed out');
+}
+function requireUser(next) {
+  if (user) return next();
+  afterLogin = next;
+  openLogin();
+}
+
+function openLogin() {
+  openModal(`
+    <div class="p-6 pb-0 flex items-start justify-between">
+      <div><div class="font-semibold text-lg">Sign in to BorrowBloc</div><div class="text-sm text-slate-500">Demo accounts, no password needed.</div></div>
+      <button data-close class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <div class="p-6 space-y-2" id="accountList">
+      ${allAccounts().map((a, i) => `
+        <button data-acct="${i}" class="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50 text-left">
+          ${avatar(a.name, 'w-10 h-10 text-sm')}
+          <span class="flex-1"><span class="block font-medium">${esc(a.name)}</span><span class="block text-xs text-slate-500">${esc(a.home || 'Neighbor')}</span></span>
+          <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400"></i>
+        </button>`).join('')}
+    </div>
+    <form id="newAcct" class="px-6 pb-6 pt-2 border-t border-slate-100 space-y-3">
+      <div class="text-sm font-medium pt-3">New here? Join your street</div>
+      <div class="flex gap-2">
+        <input name="name" required maxlength="40" placeholder="Your name" class="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+        <input name="home" maxlength="30" placeholder="House #" class="w-28 px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+      </div>
+      <button class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl">Join</button>
+    </form>`, false);
+  const accts = allAccounts();
+  $('accountList').onclick = e => { const b = e.target.closest('[data-acct]'); if (b) signIn(accts[Number(b.dataset.acct)]); };
+  $('newAcct').onsubmit = e => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    signIn({ name: f.get('name').trim(), home: f.get('home').trim() });
+  };
+}
+
+function renderAccount() {
+  const el = $('account');
+  if (!user) {
+    el.innerHTML = `<button id="loginBtn" class="inline-flex items-center gap-1.5 border border-slate-200 hover:border-slate-400 text-sm font-medium px-3 py-2 rounded-lg"><i data-lucide="log-in" class="w-4 h-4"></i><span class="hidden sm:inline">Sign in</span></button>`;
+    $('loginBtn').onclick = () => openLogin();
+    $('greeting').textContent = "Borrow it. Don't buy it.";
+    return;
+  }
+  el.innerHTML = `
+    <div class="relative">
+      <button id="acctBtn" class="flex items-center gap-2 rounded-full hover:bg-slate-100 pr-2">
+        ${avatar(user.name)}<span class="hidden sm:inline text-sm font-medium">${esc(user.name.split(' ')[0])}</span>
+        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 hidden sm:inline"></i>
+      </button>
+      <div id="acctMenu" class="hidden absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-lg p-1.5 text-sm">
+        <div class="px-3 py-2 border-b border-slate-100 mb-1">
+          <div class="font-medium">${esc(user.name)}</div>
+          <div class="text-xs text-slate-500">${esc(user.home || 'Neighbor')}</div>
+        </div>
+        <button data-menu="mine" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-100"><i data-lucide="user" class="w-4 h-4"></i>My stuff</button>
+        <button data-menu="switch" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-100"><i data-lucide="users" class="w-4 h-4"></i>Switch account</button>
+        <button data-menu="out" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-100 text-red-600"><i data-lucide="log-out" class="w-4 h-4"></i>Sign out</button>
+      </div>
+    </div>`;
+  $('acctBtn').onclick = e => { e.stopPropagation(); $('acctMenu').classList.toggle('hidden'); };
+  $('acctMenu').onclick = e => {
+    const b = e.target.closest('[data-menu]'); if (!b) return;
+    $('acctMenu').classList.add('hidden');
+    if (b.dataset.menu === 'mine') { activeCategory = 'Mine'; render(); }
+    if (b.dataset.menu === 'switch') openLogin();
+    if (b.dataset.menu === 'out') signOut();
+  };
+  const mine = tools.filter(t => t.status === 'Checked Out' && sameName(t.borrower, user.name));
+  const late = mine.filter(isOverdue).length;
+  $('greeting').textContent = late
+    ? `Hi ${user.name.split(' ')[0]}, ${late} of your loans ${late === 1 ? 'is' : 'are'} overdue`
+    : `Hi ${user.name.split(' ')[0]}, what are you building today?`;
+}
+document.addEventListener('click', () => $('acctMenu')?.classList.add('hidden'));
+
+// ─── Photos ────────────────────────────────────────────────────────────────
+// Shrink to a small JPEG so it fits in one sheet cell and in localStorage.
+async function compressImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    let size = 480, q = 0.75, out = '';
+    for (let k = 0; k < 10; k++) {
+      const s = Math.min(1, size / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      out = c.toDataURL('image/jpeg', q);
+      if (out.length <= MAX_PHOTO_CHARS) return out;
+      q -= 0.1;
+      if (q < 0.45) { q = 0.7; size = Math.round(size * 0.75); }
+    }
+    throw new Error('Photo too large');
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function photoHTML(t, iconSize = 'w-12 h-12') {
+  const m = meta(t.category);
+  const p = safePhoto(t.photo);
+  return p
+    ? `<img src="${esc(p)}" alt="${esc(t.name)}" class="w-full h-full object-cover" loading="lazy" />`
+    : `<div class="w-full h-full grid place-items-center ${m.color}"><i data-lucide="${m.icon}" class="${iconSize} opacity-80"></i></div>`;
+}
+
+// Wires a hidden file input + preview; returns a getter for the chosen photo.
+function photoPicker(inputId, previewId, initial = '') {
+  let photo = initial;
+  $(inputId).onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      photo = await compressImage(file);
+      $(previewId).innerHTML = `<img src="${photo}" class="w-full h-full object-cover" />`;
+    } catch { toast('Could not use that image, try another', true); }
+  };
+  return () => photo;
+}
 
 // ─── Data layer ────────────────────────────────────────────────────────────
-function loadLocal() {
-  try { const s = localStorage.getItem('borrowbloc'); if (s) return JSON.parse(s); } catch {}
-  return structuredClone(MOCK_DATA);
+function loadLocal() { return store.get('borrowbloc', null)?.map(normalize) || structuredClone(MOCK_DATA); }
+function saveLocal() {
+  try { localStorage.setItem('borrowbloc', JSON.stringify(tools)); }
+  catch { toast('Browser storage is full, photo not saved locally', true); }
 }
-function saveLocal() { try { localStorage.setItem('borrowbloc', JSON.stringify(tools)); } catch {} }
 
 async function fetchTools() {
   if (mode !== 'live') return;
@@ -171,13 +363,16 @@ async function fetchTools() {
 }
 
 function normalize(r) {
+  const blank = v => (v && v !== '—' ? String(v) : '');
   return {
     id: Number(r.id),
     name: r.name || '',
     category: r.category || 'Other',
     status: r.status === 'Checked Out' ? 'Checked Out' : 'Available',
-    borrower: r.borrower && r.borrower !== '—' ? r.borrower : '',
-    due: r.due && r.due !== '—' ? String(r.due).slice(0, 10) : '',
+    borrower: blank(r.borrower),
+    due: blank(r.due).slice(0, 10),
+    owner: blank(r.owner),
+    photo: safePhoto(r.photo),
   };
 }
 
@@ -200,11 +395,11 @@ async function write(action, payload) {
 }
 
 // ─── Actions ───────────────────────────────────────────────────────────────
-async function checkout(id, borrower, due) {
+async function checkout(id, due) {
   const t = tools.find(t => t.id === id); const prev = { ...t };
-  Object.assign(t, { status: 'Checked Out', borrower, due });
+  Object.assign(t, { status: 'Checked Out', borrower: user.name, due });
   flashId = id; closeModal(); render();
-  if (await write('checkout', { id, borrower, due })) toast(`${t.name} is yours until ${fmtDate(due)}. Enjoy!`);
+  if (await write('checkout', { id, borrower: user.name, due })) toast(`${t.name} is yours until ${fmtDate(due)}. Enjoy!`);
   else { Object.assign(t, prev); render(); }
 }
 
@@ -216,12 +411,19 @@ async function giveBack(id) {
   else { Object.assign(t, prev); render(); }
 }
 
-async function addTool(name, category) {
+async function addTool(name, category, photo) {
   const id = tools.reduce((m, t) => Math.max(m, t.id), 0) + 1;
-  const t = { id, name, category, status: 'Available', borrower: '', due: '' };
+  const t = { id, name, category, status: 'Available', borrower: '', due: '', owner: user.name, photo };
   tools.push(t); flashId = id; closeModal(); render();
   if (await write('add', t)) toast(`${name} added to the library 🎉`);
   else { tools = tools.filter(x => x.id !== id); render(); }
+}
+
+async function setPhoto(id, photo) {
+  const t = tools.find(t => t.id === id); const prev = t.photo;
+  t.photo = photo; flashId = id; closeModal(); render();
+  if (await write('photo', { id, photo })) toast('Photo updated');
+  else { t.photo = prev; render(); }
 }
 
 // ─── Rendering ─────────────────────────────────────────────────────────────
@@ -232,7 +434,7 @@ function setSync(state) {
     offline: ['bg-red-50 text-red-700', 'bg-red-500', 'Offline · retrying'],
     demo:    ['bg-slate-100 text-slate-600', 'bg-slate-400', 'Demo mode'],
   }[state];
-  b.className = `inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${s[0]}`;
+  b.className = `hidden md:inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${s[0]}`;
   b.innerHTML = `<span class="w-2 h-2 rounded-full ${s[1]}"></span> ${s[2]}`;
 }
 
@@ -245,108 +447,141 @@ function renderStats() {
 }
 
 function renderFilters() {
-  const cats = ['All', ...new Set(tools.map(t => t.category))];
+  const cats = [...(user ? ['Mine'] : []), 'All', ...new Set(tools.map(t => t.category))];
   $('filters').innerHTML = cats.map(c => `
-    <button data-cat="${esc(c)}" class="whitespace-nowrap px-3 py-2 rounded-xl text-sm font-medium border ${c === activeCategory ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 hover:border-slate-400'}">${esc(c)}</button>`).join('');
+    <button data-cat="${esc(c)}" class="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border ${c === activeCategory ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 hover:border-slate-400'}">${c === 'Mine' ? '<i data-lucide="user" class="w-4 h-4"></i>My stuff' : esc(c)}</button>`).join('');
+}
+
+function badgeHTML(t) {
+  const pill = (bg, dot, label) => `<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full shadow-sm ${bg}"><span class="w-1.5 h-1.5 rounded-full ${dot}"></span>${label}</span>`;
+  if (t.status === 'Available') return pill('bg-emerald-100 text-emerald-700', 'bg-emerald-500', 'Available');
+  if (isOverdue(t)) return pill('bg-red-100 text-red-700', 'bg-red-500', 'Overdue');
+  return pill('bg-amber-100 text-amber-700', 'bg-amber-500', 'Checked Out');
 }
 
 function cardHTML(t) {
-  const m = meta(t.category);
   const avail = t.status === 'Available';
   const overdue = isOverdue(t);
-  const badge = avail
-    ? `<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Available</span>`
-    : overdue
-      ? `<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-red-100 text-red-700"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Overdue</span>`
-      : `<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-amber-100 text-amber-700"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Checked Out</span>`;
+  const mine = user && sameName(t.borrower, user.name);
   const footer = avail
-    ? `<span class="text-emerald-700 font-medium inline-flex items-center gap-1">Borrow now <i data-lucide="arrow-right" class="w-4 h-4"></i></span>`
-    : `<span class="inline-flex items-center gap-1.5 text-slate-600"><i data-lucide="user" class="w-4 h-4"></i>${esc(t.borrower)}</span>
-       <span class="${overdue ? 'text-red-600 font-medium' : 'text-slate-500'}">${t.due ? 'Due ' + fmtDate(t.due) : ''}</span>`;
+    ? `<span class="text-emerald-700 font-medium inline-flex items-center gap-1">Borrow <i data-lucide="arrow-right" class="w-4 h-4"></i></span>`
+    : `<span class="inline-flex items-center gap-1.5 text-slate-600 min-w-0"><i data-lucide="user" class="w-4 h-4 shrink-0"></i><span class="truncate">${mine ? 'You' : esc(t.borrower)}</span></span>
+       <span class="shrink-0 ${overdue ? 'text-red-600 font-medium' : 'text-slate-500'}">${t.due ? fmtDate(t.due) : ''}</span>`;
   return `
-    <button data-id="${t.id}" class="card-enter ${t.id === flashId ? 'flash' : ''} text-left bg-white rounded-2xl border ${overdue ? 'border-red-200' : 'border-slate-200'} p-5 hover:shadow-md hover:-translate-y-0.5 transition focus:outline-none focus:ring-2 focus:ring-emerald-500">
-      <div class="flex items-start justify-between gap-3">
-        <div class="w-11 h-11 rounded-xl grid place-items-center ${m.color}"><i data-lucide="${m.icon}" class="w-5 h-5"></i></div>
-        ${badge}
+    <button data-id="${t.id}" class="card-enter ${t.id === flashId ? 'flash' : ''} group text-left bg-white rounded-2xl border ${overdue ? 'border-red-200' : 'border-slate-200'} overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition focus:outline-none focus:ring-2 focus:ring-emerald-500 flex flex-col">
+      <div class="relative aspect-square w-full overflow-hidden ${avail ? '' : 'grayscale-[40%]'}">
+        ${photoHTML(t)}
+        <div class="absolute top-2 left-2">${badgeHTML(t)}</div>
       </div>
-      <div class="mt-4 font-semibold text-lg">${esc(t.name)}</div>
-      <div class="text-sm text-slate-500">${esc(t.category)}</div>
-      <div class="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between text-sm min-h-[1.5rem]">${footer}</div>
+      <div class="p-3 sm:p-4 flex-1 flex flex-col">
+        <div class="font-semibold leading-snug truncate">${esc(t.name)}</div>
+        <div class="text-xs sm:text-sm text-slate-500 truncate">${esc(t.category)}${t.owner ? ' · ' + esc(sameName(t.owner, user?.name) ? 'yours' : t.owner.split(' ')[0] + "'s") : ''}</div>
+        <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 text-xs sm:text-sm mt-auto">${footer}</div>
+      </div>
     </button>`;
 }
 
 function render() {
+  renderAccount();
   renderStats();
   renderFilters();
   const q = query.trim().toLowerCase();
   const list = tools
-    .filter(t => activeCategory === 'All' || t.category === activeCategory)
-    .filter(t => !q || t.name.toLowerCase().includes(q) || t.category.toLowerCase().includes(q) || t.borrower.toLowerCase().includes(q))
+    .filter(t => activeCategory === 'All'
+      || (activeCategory === 'Mine' ? user && (sameName(t.borrower, user.name) || sameName(t.owner, user.name)) : t.category === activeCategory))
+    .filter(t => !q || [t.name, t.category, t.borrower, t.owner].some(s => s.toLowerCase().includes(q)))
     .sort((a, b) => (a.status === b.status ? a.id - b.id : a.status === 'Available' ? -1 : 1));
   $('grid').innerHTML = list.map(cardHTML).join('');
   $('empty').classList.toggle('hidden', list.length > 0);
+  $('emptyText').textContent = activeCategory === 'Mine' && !q
+    ? "You haven't borrowed or shared anything yet."
+    : 'No tools match your search.';
   lucide.createIcons();
   flashId = null;
 }
 
 // ─── Modals ────────────────────────────────────────────────────────────────
-function openModal(html) {
+function openModal(html, focus = true) {
   $('modalBody').innerHTML = html;
   $('modal').classList.remove('hidden');
   lucide.createIcons();
-  $('modalBody').querySelector('input')?.focus();
+  if (focus) $('modalBody').querySelector('input:not([type=file]):not([type=date])')?.focus();
 }
 function closeModal() { $('modal').classList.add('hidden'); }
 
-function modalHeader(t) {
+function modalHero(t) {
   const m = meta(t.category);
+  const isOwner = user && sameName(t.owner, user.name);
   return `
-    <div class="p-6 pb-0 flex items-start gap-4">
-      <div class="w-12 h-12 rounded-xl grid place-items-center ${m.color}"><i data-lucide="${m.icon}" class="w-6 h-6"></i></div>
-      <div class="flex-1">
-        <div class="font-semibold text-lg">${esc(t.name)}</div>
-        <div class="text-sm text-slate-500">${esc(t.category)} · saves ~$${m.value} vs buying</div>
-      </div>
-      <button data-close class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+    <div class="relative aspect-[4/3] w-full overflow-hidden" id="heroPhoto">
+      ${photoHTML(t, 'w-16 h-16')}
+      <button data-close class="absolute top-3 right-3 w-8 h-8 grid place-items-center rounded-full bg-white/90 text-slate-600 hover:text-slate-900 shadow"><i data-lucide="x" class="w-4 h-4"></i></button>
+      <div class="absolute top-3 left-3">${badgeHTML(t)}</div>
+      ${isOwner ? `
+        <label class="absolute bottom-3 right-3 inline-flex items-center gap-1.5 bg-white/90 hover:bg-white text-slate-800 text-xs font-medium px-3 py-1.5 rounded-full shadow cursor-pointer">
+          <i data-lucide="camera" class="w-4 h-4"></i>${t.photo ? 'Change photo' : 'Add photo'}
+          <input id="ownerPhoto" type="file" accept="image/*" class="hidden" />
+        </label>` : ''}
+    </div>
+    <div class="p-6 pb-0">
+      <div class="font-semibold text-xl">${esc(t.name)}</div>
+      <div class="text-sm text-slate-500">${esc(t.category)} · saves ~$${m.value} vs buying</div>
+      ${t.owner ? `<div class="mt-3 flex items-center gap-2 text-sm">${avatar(t.owner, 'w-6 h-6 text-[10px]')}<span>Shared by <b>${isOwner ? 'you' : esc(t.owner)}</b></span></div>` : ''}
     </div>`;
+}
+
+function wireOwnerPhoto(id) {
+  const input = $('ownerPhoto');
+  if (!input) return;
+  input.onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try { setPhoto(id, await compressImage(file)); }
+    catch { toast('Could not use that image, try another', true); }
+  };
 }
 
 function openTool(id) {
   const t = tools.find(t => t.id === id);
   if (!t) return;
   if (t.status === 'Available') {
-    openModal(`${modalHeader(t)}
+    openModal(`${modalHero(t)}
       <form id="checkoutForm" class="p-6 space-y-4">
-        <label class="block">
-          <span class="text-sm font-medium">Your name</span>
-          <input name="borrower" required maxlength="40" placeholder="e.g. Alex from #12" class="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-        </label>
-        <label class="block">
-          <span class="text-sm font-medium">Return by</span>
-          <input name="due" type="date" required min="${todayISO()}" value="${addDays(LOAN_DAYS)}" class="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-        </label>
+        ${user
+          ? `<div class="flex items-center gap-2 text-sm text-slate-600">${avatar(user.name, 'w-6 h-6 text-[10px]')}Borrowing as <b>${esc(user.name)}</b></div>
+             <label class="block">
+               <span class="text-sm font-medium">Return by</span>
+               <input name="due" type="date" required min="${todayISO()}" value="${addDays(LOAN_DAYS)}" class="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+             </label>`
+          : `<div class="text-sm text-slate-600">Sign in with your demo account to borrow this.</div>`}
         <button class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl inline-flex items-center justify-center gap-2">
-          <i data-lucide="hand-helping" class="w-5 h-5"></i>Borrow
+          <i data-lucide="${user ? 'hand-helping' : 'log-in'}" class="w-5 h-5"></i>${user ? 'Borrow' : 'Sign in to borrow'}
         </button>
-      </form>`);
+      </form>`, false);
     $('checkoutForm').onsubmit = e => {
       e.preventDefault();
-      const f = new FormData(e.target);
-      checkout(id, f.get('borrower').trim(), f.get('due'));
+      if (!user) return requireUser(() => openTool(id));
+      checkout(id, new FormData(e.target).get('due'));
     };
   } else {
     const overdue = isOverdue(t);
-    openModal(`${modalHeader(t)}
+    const canReturn = user && (sameName(t.borrower, user.name) || sameName(t.owner, user.name));
+    const who = user && sameName(t.borrower, user.name) ? 'you' : esc(t.borrower);
+    openModal(`${modalHero(t)}
       <div class="p-6 space-y-4">
         <div class="rounded-xl ${overdue ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-800'} p-4 text-sm">
-          Borrowed by <b>${esc(t.borrower)}</b>${t.due ? `, ${overdue ? 'was due' : 'due back'} <b>${fmtDate(t.due)}</b>` : ''}.
+          Borrowed by <b>${who}</b>${t.due ? `, ${overdue ? 'was due' : 'due back'} <b>${fmtDate(t.due)}</b>` : ''}.
         </div>
-        <button id="returnBtn" class="w-full bg-slate-900 hover:bg-slate-700 text-white font-semibold py-3 rounded-xl inline-flex items-center justify-center gap-2">
-          <i data-lucide="undo-2" class="w-5 h-5"></i>Return tool
-        </button>
-      </div>`);
-    $('returnBtn').onclick = () => giveBack(id);
+        ${canReturn
+          ? `<button id="returnBtn" class="w-full bg-slate-900 hover:bg-slate-700 text-white font-semibold py-3 rounded-xl inline-flex items-center justify-center gap-2"><i data-lucide="undo-2" class="w-5 h-5"></i>Return tool</button>`
+          : user
+            ? `<div class="text-sm text-slate-500 text-center">Only ${esc(t.borrower)}${t.owner ? ` or ${esc(t.owner)}` : ''} can mark this returned.</div>`
+            : `<button id="returnLogin" class="w-full border border-slate-200 hover:border-slate-400 font-semibold py-3 rounded-xl inline-flex items-center justify-center gap-2"><i data-lucide="log-in" class="w-5 h-5"></i>Sign in to return</button>`}
+      </div>`, false);
+    if ($('returnBtn')) $('returnBtn').onclick = () => giveBack(id);
+    if ($('returnLogin')) $('returnLogin').onclick = () => requireUser(() => openTool(id));
   }
+  wireOwnerPhoto(id);
 }
 
 function openAdd() {
@@ -354,20 +589,28 @@ function openAdd() {
     .map(c => `<option>${esc(c)}</option>`).join('');
   openModal(`
     <div class="p-6 pb-0 flex items-start justify-between">
-      <div><div class="font-semibold text-lg">Share a tool</div><div class="text-sm text-slate-500">Add something from your garage to the library.</div></div>
+      <div><div class="font-semibold text-lg">Share a tool</div><div class="text-sm text-slate-500">List something from your garage for the street.</div></div>
       <button data-close class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
     </div>
     <form id="addForm" class="p-6 space-y-4">
+      <label class="block cursor-pointer">
+        <span class="text-sm font-medium">Photo</span>
+        <div id="addPreview" class="mt-1 aspect-[4/3] rounded-xl border-2 border-dashed border-slate-200 hover:border-emerald-500 overflow-hidden grid place-items-center text-slate-400 text-sm">
+          <span class="flex flex-col items-center gap-1"><i data-lucide="image-plus" class="w-8 h-8"></i>Tap to add a photo</span>
+        </div>
+        <input id="addPhoto" type="file" accept="image/*" class="hidden" />
+      </label>
       <label class="block"><span class="text-sm font-medium">Tool name</span>
         <input name="name" required maxlength="40" placeholder="e.g. Tile Cutter" class="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" /></label>
       <label class="block"><span class="text-sm font-medium">Category</span>
         <select name="category" class="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">${opts}</select></label>
-      <button class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl">Add to library</button>
+      <button class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl">List it</button>
     </form>`);
+  const getPhoto = photoPicker('addPhoto', 'addPreview');
   $('addForm').onsubmit = e => {
     e.preventDefault();
     const f = new FormData(e.target);
-    addTool(f.get('name').trim(), f.get('category'));
+    addTool(f.get('name').trim(), f.get('category'), getPhoto());
   };
 }
 
@@ -384,14 +627,15 @@ function toast(msg, error = false) {
 $('grid').addEventListener('click', e => { const c = e.target.closest('[data-id]'); if (c) openTool(Number(c.dataset.id)); });
 $('filters').addEventListener('click', e => { const b = e.target.closest('[data-cat]'); if (b) { activeCategory = b.dataset.cat; render(); } });
 $('search').addEventListener('input', e => { query = e.target.value; render(); });
-$('addBtn').onclick = openAdd;
-$('modal').addEventListener('click', e => { if (e.target.id === 'modal' || e.target.closest('[data-close]')) closeModal(); });
+$('addBtn').onclick = () => requireUser(openAdd);
+$('modal').addEventListener('click', e => { if (e.target.id === 'modal' || e.target.closest('[data-close]')) { afterLogin = null; closeModal(); } });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeModal();
-  if (e.key === '/' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); $('search').focus(); }
+  if (e.key === 'Escape') { afterLogin = null; closeModal(); }
+  if (e.key === '/' && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) { e.preventDefault(); $('search').focus(); }
 });
 
 (async function init() {
+  setupBranding();
   if (mode === 'live') {
     await fetchTools();
     if (!tools.length) { tools = loadLocal(); mode = 'demo'; setSync('demo'); render(); toast('Sheet unreachable, running on demo data', true); }
