@@ -31,6 +31,7 @@ aibuild259/
 ├── index.html          # Single-file frontend & dashboard logic (runs in demo mode out of the box)
 ├── apps-script/
 │   └── Code.gs         # Google Apps Script backend for the Inventory sheet
+├── assets/tools/       # Sample tool photos (Wikimedia Commons, see CREDITS.md)
 ├── specsheet.txt       # Hackathon spec
 └── README.md           # Project documentation
 ```

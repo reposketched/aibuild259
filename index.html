@@ -126,15 +126,27 @@ const DEMO_ACCOUNTS = [
 ];
 const AVATAR_COLORS = ['bg-emerald-500', 'bg-sky-500', 'bg-violet-500', 'bg-amber-500', 'bg-rose-500', 'bg-teal-500'];
 
+// Sample photos from Wikimedia Commons; most licenses require showing the credit.
+const PHOTO_CREDITS = {
+  "assets/tools/cordless-drill.jpg": { author: "Fructibus", license: "CC0", url: "https://commons.wikimedia.org/wiki/File:Cordless_electric_(screw)_drill.jpg" },
+  "assets/tools/ladder.jpg": { author: "Amin", license: "CC BY-SA 4.0", url: "https://commons.wikimedia.org/wiki/File:Ladder_aluminum.jpg" },
+  "assets/tools/wheelbarrow.jpg": { author: "Oto Zapletal", license: "CC BY 4.0", url: "https://commons.wikimedia.org/wiki/File:Two_wheelbarrows.jpg" },
+  "assets/tools/circular-saw.jpg": { author: "simplicity hunter", license: "CC BY 2.0", url: "https://commons.wikimedia.org/wiki/File:DeWalt_circular_saw_in_use.jpg" },
+  "assets/tools/pressure-washer.jpg": { author: "FBenjr123", license: "CC BY-SA 4.0", url: "https://commons.wikimedia.org/wiki/File:Kawasaki_Pressure_Washer_HPW_302.jpg" },
+  "assets/tools/hedge-trimmer.jpg": { author: "Simon Speed", license: "CC0", url: "https://commons.wikimedia.org/wiki/File:BnDHedgeTrimmerExtended.JPG" },
+  "assets/tools/stand-mixer.jpg": { author: "Your Best Digs", license: "CC BY 2.0", url: "https://commons.wikimedia.org/wiki/File:White_KitchenAid_mixer_(KSM150PSWH).jpg" },
+  "assets/tools/tent.jpg": { author: "ModalPeak", license: "CC BY-SA 4.0", url: "https://commons.wikimedia.org/wiki/File:Dome_tent_in_the_BWCA_(CDM11452CT).jpg" },
+};
+
 const MOCK_DATA = [
-  { id: 1, name: 'Cordless Drill',    category: 'Power Tools',        status: 'Available',   borrower: '',              due: '',           owner: 'Marcus Lee',    photo: '' },
-  { id: 2, name: 'Heavy-Duty Ladder', category: 'Yard & Maintenance', status: 'Checked Out', borrower: 'Sarah Jenkins', due: '2026-10-02', owner: 'Priya Patel',   photo: '' },
-  { id: 3, name: 'Wheelbarrow',       category: 'Gardening',          status: 'Available',   borrower: '',              due: '',           owner: 'Alex Kim',      photo: '' },
-  { id: 4, name: 'Circular Saw',      category: 'Power Tools',        status: 'Available',   borrower: '',              due: '',           owner: 'Marcus Lee',    photo: '' },
-  { id: 5, name: 'Pressure Washer',   category: 'Yard & Maintenance', status: 'Checked Out', borrower: 'Marcus Lee',    due: '2026-09-20', owner: 'Sarah Jenkins', photo: '' },
-  { id: 6, name: 'Hedge Trimmer',     category: 'Gardening',          status: 'Available',   borrower: '',              due: '',           owner: 'Priya Patel',   photo: '' },
-  { id: 7, name: 'Stand Mixer',       category: 'Kitchen',            status: 'Available',   borrower: '',              due: '',           owner: 'Sarah Jenkins', photo: '' },
-  { id: 8, name: '4-Person Tent',     category: 'Camping',            status: 'Available',   borrower: '',              due: '',           owner: 'Alex Kim',      photo: '' },
+  { id: 1, name: 'Cordless Drill',    category: 'Power Tools',        status: 'Available',   borrower: '',              due: '',           owner: 'Marcus Lee',    photo: 'assets/tools/cordless-drill.jpg' },
+  { id: 2, name: 'Heavy-Duty Ladder', category: 'Yard & Maintenance', status: 'Checked Out', borrower: 'Sarah Jenkins', due: '2026-10-02', owner: 'Priya Patel',   photo: 'assets/tools/ladder.jpg' },
+  { id: 3, name: 'Wheelbarrow',       category: 'Gardening',          status: 'Available',   borrower: '',              due: '',           owner: 'Alex Kim',      photo: 'assets/tools/wheelbarrow.jpg' },
+  { id: 4, name: 'Circular Saw',      category: 'Power Tools',        status: 'Available',   borrower: '',              due: '',           owner: 'Marcus Lee',    photo: 'assets/tools/circular-saw.jpg' },
+  { id: 5, name: 'Pressure Washer',   category: 'Yard & Maintenance', status: 'Checked Out', borrower: 'Marcus Lee',    due: '2026-09-20', owner: 'Sarah Jenkins', photo: 'assets/tools/pressure-washer.jpg' },
+  { id: 6, name: 'Hedge Trimmer',     category: 'Gardening',          status: 'Available',   borrower: '',              due: '',           owner: 'Priya Patel',   photo: 'assets/tools/hedge-trimmer.jpg' },
+  { id: 7, name: 'Stand Mixer',       category: 'Kitchen',            status: 'Available',   borrower: '',              due: '',           owner: 'Sarah Jenkins', photo: 'assets/tools/stand-mixer.jpg' },
+  { id: 8, name: '4-Person Tent',     category: 'Camping',            status: 'Available',   borrower: '',              due: '',           owner: 'Alex Kim',      photo: 'assets/tools/tent.jpg' },
 ];
 
 // localStorage can throw (private mode, blocked storage), so every access is guarded.
@@ -161,7 +173,7 @@ const todayISO = () => localISO(new Date());
 const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return localISO(d); };
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
 const isOverdue = t => t.status === 'Checked Out' && t.due && t.due < todayISO();
-const safePhoto = p => /^(data:image\/(png|jpe?g|webp|gif);base64,|https:\/\/)/.test(p || '') ? p : '';
+const safePhoto = p => /^(data:image\/(png|jpe?g|webp|gif);base64,|https:\/\/|assets\/[\w\/.-]+$)/.test(p || '') ? p : '';
 const sameName = (a, b) => !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
 
 // ─── Branding: favico.png, or the hammer icon if it's missing ───────────────
@@ -334,7 +346,15 @@ function photoPicker(inputId, previewId, initial = '') {
 }
 
 // ─── Data layer ────────────────────────────────────────────────────────────
-function loadLocal() { return store.get('borrowbloc', null)?.map(normalize) || structuredClone(MOCK_DATA); }
+function loadLocal() {
+  const saved = store.get('borrowbloc', null);
+  if (!saved) return structuredClone(MOCK_DATA);
+  // Data saved by an older version has no photos or owners; fill them from the samples.
+  return saved.map(normalize).map(t => {
+    const m = MOCK_DATA.find(m => m.id === t.id && m.name === t.name);
+    return m ? { ...t, photo: t.photo || m.photo, owner: t.owner || m.owner } : t;
+  });
+}
 function saveLocal() {
   try { localStorage.setItem('borrowbloc', JSON.stringify(tools)); }
   catch { toast('Browser storage is full, photo not saved locally', true); }
@@ -517,6 +537,9 @@ function modalHero(t) {
       ${photoHTML(t, 'w-16 h-16')}
       <button data-close class="absolute top-3 right-3 w-8 h-8 grid place-items-center rounded-full bg-white/90 text-slate-600 hover:text-slate-900 shadow"><i data-lucide="x" class="w-4 h-4"></i></button>
       <div class="absolute top-3 left-3">${badgeHTML(t)}</div>
+      ${PHOTO_CREDITS[t.photo] ? `
+        <a href="${esc(PHOTO_CREDITS[t.photo].url)}" target="_blank" rel="noopener" class="absolute bottom-2 left-2 max-w-[60%] truncate text-[10px] text-white/90 bg-black/40 hover:bg-black/60 px-2 py-0.5 rounded-full">
+          Photo: ${esc(PHOTO_CREDITS[t.photo].author)} · ${esc(PHOTO_CREDITS[t.photo].license)}</a>` : ''}
       ${isOwner ? `
         <label class="absolute bottom-3 right-3 inline-flex items-center gap-1.5 bg-white/90 hover:bg-white text-slate-800 text-xs font-medium px-3 py-1.5 rounded-full shadow cursor-pointer">
           <i data-lucide="camera" class="w-4 h-4"></i>${t.photo ? 'Change photo' : 'Add photo'}

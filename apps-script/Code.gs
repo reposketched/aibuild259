@@ -4,7 +4,8 @@
 //
 // Expects a tab named "Inventory" with headers in row 1:
 // ID | Tool Name | Category | Status | Borrower | Due Date | Photo | Owner
-// Photo holds a small base64 JPEG (the page keeps it under the 50k cell limit) or an https URL.
+// Photo holds a small base64 JPEG (the page keeps it under the 50k cell limit), an https URL,
+// or a bundled path like assets/tools/ladder.jpg.
 
 const SHEET_NAME = 'Inventory';
 
@@ -77,7 +78,7 @@ function doPost(e) {
 
 function photo_(p) {
   p = String(p || '');
-  return /^(data:image\/(png|jpe?g|webp|gif);base64,|https:\/\/)/.test(p) && p.length <= 50000 ? p : '';
+  return /^(data:image\/(png|jpe?g|webp|gif);base64,|https:\/\/|assets\/[\w\/.-]+$)/.test(p) && p.length <= 50000 ? p : '';
 }
 
 // Strip leading formula characters so a borrower name can't become a sheet formula.
