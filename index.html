@@ -15,6 +15,10 @@
     @keyframes flash { 0% { box-shadow: 0 0 0 4px rgb(16 185 129 / .6) } 100% { box-shadow: 0 0 0 0 rgb(16 185 129 / 0) } }
     .pulse-dot { animation: pulse 2s infinite; }
     @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+    #tourSpot { box-shadow: 0 0 0 9999px rgb(15 23 42 / .6); transition: all .35s ease; }
+    #tourCard { transition: top .35s ease, left .35s ease; }
+    details > summary { list-style: none; }
+    details > summary::-webkit-details-marker { display: none; }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
@@ -43,13 +47,18 @@
 
   <main class="max-w-6xl mx-auto px-4 py-8">
     <!-- Hero -->
-    <header class="mb-6">
-      <h1 id="greeting" class="text-2xl sm:text-3xl font-bold tracking-tight">Borrow it. Don't buy it.</h1>
-      <p class="text-slate-500 mt-1">The average drill is used 13 minutes in its lifetime. Share what your street already owns.</p>
+    <header id="hero" class="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+      <div>
+        <h1 id="greeting" class="text-2xl sm:text-3xl font-bold tracking-tight">Borrow it. Don't buy it.</h1>
+        <p class="text-slate-500 mt-1">The average drill is used 13 minutes in its lifetime. Share what your street already owns.</p>
+      </div>
+      <button id="tourBtn" class="shrink-0 self-start sm:self-auto inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-sm">
+        <i data-lucide="play" class="w-4 h-4"></i>Take the tour
+      </button>
     </header>
 
     <!-- Stats banner -->
-    <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+    <section id="stats" class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
       <div class="bg-white rounded-2xl border border-slate-200 p-4">
         <div class="flex items-center gap-2 text-slate-500 text-sm"><i data-lucide="package" class="w-4 h-4"></i>Total tools</div>
         <div id="statTotal" class="text-3xl font-bold mt-1">–</div>
@@ -83,8 +92,12 @@
     <section id="grid" class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"></section>
     <div id="empty" class="hidden text-center py-16 text-slate-500">
       <i data-lucide="search-x" class="w-10 h-10 mx-auto mb-2 text-slate-300"></i>
-      <span id="emptyText">No tools match your search.</span>
+      <div id="emptyText">No tools match your search.</div>
+      <div id="emptyAsk" class="mt-3"></div>
     </div>
+
+    <!-- Wish list -->
+    <section id="requests" class="mt-10"></section>
 
     <!-- Community impact -->
     <section id="impact" class="mt-10"></section>
@@ -92,13 +105,18 @@
 
   <!-- Modal -->
   <div id="modal" class="hidden fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm grid place-items-center p-4">
-    <div class="bg-white rounded-2xl w-full max-w-md shadow-xl card-enter overflow-hidden max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true">
+    <div id="modalCard" class="bg-white rounded-2xl w-full max-w-md shadow-xl card-enter max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true">
       <div id="modalBody"></div>
     </div>
   </div>
 
+  <!-- Guided tour -->
+  <div id="tourBlock" class="hidden fixed inset-0 z-[60]"></div>
+  <div id="tourSpot" class="hidden fixed z-[61] rounded-2xl pointer-events-none ring-2 ring-emerald-400"></div>
+  <div id="tourCard" class="hidden fixed z-[62] w-[min(360px,calc(100vw-32px))] bg-white rounded-2xl shadow-2xl p-5"></div>
+
   <!-- Toast -->
-  <div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg"></div>
+  <div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] bg-slate-900 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg"></div>
 
 <script>
 // ─── Config ────────────────────────────────────────────────────────────────
@@ -107,7 +125,19 @@
 const SHEET_ENDPOINT = '';
 const POLL_MS = 5000;
 const LOAN_DAYS = 7;
+const MAX_BOOKING_DAYS = 14;
 const MAX_PHOTO_CHARS = 45000;   // a Google Sheets cell holds at most 50k characters
+const KEYS = { tools: 'bb2_tools', loans: 'bb2_loans', requests: 'bb2_requests', user: 'borrowbloc_user', accounts: 'borrowbloc_accounts' };
+
+// ─── Date helpers ──────────────────────────────────────────────────────────
+const localISO = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const todayISO = () => localISO(new Date());
+const shiftISO = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return localISO(d); };
+const addDays = n => shiftISO(todayISO(), n);
+const daysBetween = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 864e5);
+const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+const fmtDay = iso => new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+const ago = iso => { const d = daysBetween(iso, todayISO()); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d}d ago`; };
 
 // Rough per-item estimates for the impact numbers: retail price ($), manufacturing
 // footprint (kg CO2e) and weight (kg). Each loan counts as one purchase avoided.
@@ -123,12 +153,16 @@ const meta = c => CATEGORY_META[c] || DEFAULT_META;
 
 // Demo accounts: no passwords, just pick a neighbor. 555-01xx numbers are reserved as fictional.
 const DEMO_ACCOUNTS = [
-  { name: 'Sarah Jenkins', home: '#14 Maple St', phone: '+15555550101' },
-  { name: 'Marcus Lee',    home: '#22 Maple St', phone: '+15555550102' },
-  { name: 'Priya Patel',   home: '#9 Oak Ave',   phone: '+15555550103' },
-  { name: 'Alex Kim',      home: '#31 Oak Ave',  phone: '+15555550104' },
+  { name: 'Sarah Jenkins',     home: '#14 Maple St', phone: '+15555550101' },
+  { name: 'Marcus Lee',        home: '#22 Maple St', phone: '+15555550102' },
+  { name: 'Priya Patel',       home: '#9 Oak Ave',   phone: '+15555550103' },
+  { name: 'Alex Kim',          home: '#31 Oak Ave',  phone: '+15555550104' },
+  { name: 'Ria Nimbkar',       home: '#5 Birch Ln',  phone: '+15555550105' },
+  { name: 'Ruthu Shankar',     home: '#18 Birch Ln', phone: '+15555550106' },
+  { name: 'Maninder Kaur',     home: '#27 Maple St', phone: '+15555550107' },
+  { name: 'Sooryashankar Joy', home: '#40 Oak Ave',  phone: '+15555550108' },
 ];
-const AVATAR_COLORS = ['bg-emerald-500', 'bg-sky-500', 'bg-violet-500', 'bg-amber-500', 'bg-rose-500', 'bg-teal-500'];
+const AVATAR_COLORS = ['bg-emerald-500', 'bg-sky-500', 'bg-violet-500', 'bg-amber-500', 'bg-rose-500', 'bg-teal-500', 'bg-indigo-500', 'bg-fuchsia-500'];
 
 // Sample photos from Wikimedia Commons; most licenses require showing the credit.
 const PHOTO_CREDITS = {
@@ -142,63 +176,95 @@ const PHOTO_CREDITS = {
   "assets/tools/tent.jpg": { author: "ModalPeak", license: "CC BY-SA 4.0", url: "https://commons.wikimedia.org/wiki/File:Dome_tent_in_the_BWCA_(CDM11452CT).jpg" },
 };
 
-const MOCK_DATA = [
-  { id: 1, name: 'Cordless Drill',    category: 'Power Tools',        status: 'Available',   borrower: '',              due: '',           owner: 'Marcus Lee',    photo: 'assets/tools/cordless-drill.jpg' },
-  { id: 2, name: 'Heavy-Duty Ladder', category: 'Yard & Maintenance', status: 'Checked Out', borrower: 'Sarah Jenkins', due: '2026-10-02', owner: 'Priya Patel',   photo: 'assets/tools/ladder.jpg', waitlist: ['Alex Kim'] },
-  { id: 3, name: 'Wheelbarrow',       category: 'Gardening',          status: 'Available',   borrower: '',              due: '',           owner: 'Alex Kim',      photo: 'assets/tools/wheelbarrow.jpg' },
-  { id: 4, name: 'Circular Saw',      category: 'Power Tools',        status: 'Available',   borrower: '',              due: '',           owner: 'Marcus Lee',    photo: 'assets/tools/circular-saw.jpg' },
-  { id: 5, name: 'Pressure Washer',   category: 'Yard & Maintenance', status: 'Checked Out', borrower: 'Marcus Lee',    due: '2026-09-20', owner: 'Sarah Jenkins', photo: 'assets/tools/pressure-washer.jpg', waitlist: ['Priya Patel', 'Alex Kim'] },
-  { id: 6, name: 'Hedge Trimmer',     category: 'Gardening',          status: 'Available',   borrower: '',              due: '',           owner: 'Priya Patel',   photo: 'assets/tools/hedge-trimmer.jpg' },
-  { id: 7, name: 'Stand Mixer',       category: 'Kitchen',            status: 'Available',   borrower: '',              due: '',           owner: 'Sarah Jenkins', photo: 'assets/tools/stand-mixer.jpg' },
-  { id: 8, name: '4-Person Tent',     category: 'Camping',            status: 'Available',   borrower: '',              due: '',           owner: 'Alex Kim',      photo: 'assets/tools/tent.jpg' },
-];
+// ─── Sample data (dates are relative to today so the demo never goes stale) ─
+function mockTools() {
+  const t = (id, name, category, owner, photo, extra = {}) => ({
+    id, name, category, owner, photo: `assets/tools/${photo}.jpg`,
+    status: 'Available', borrower: '', due: '', waitlist: [], reservations: [], condition: 'Good', conditionNote: '', ...extra,
+  });
+  return [
+    t(1, 'Cordless Drill', 'Power Tools', 'Marcus Lee', 'cordless-drill', {
+      reservations: [{ name: 'Sooryashankar Joy', start: addDays(3), end: addDays(4) }] }),
+    t(2, 'Heavy-Duty Ladder', 'Yard & Maintenance', 'Priya Patel', 'ladder', {
+      status: 'Checked Out', borrower: 'Sarah Jenkins', due: addDays(5), waitlist: ['Alex Kim'] }),
+    t(3, 'Wheelbarrow', 'Gardening', 'Alex Kim', 'wheelbarrow'),
+    t(4, 'Circular Saw', 'Power Tools', 'Marcus Lee', 'circular-saw', {
+      condition: 'Needs attention', conditionNote: 'Blade is getting dull, cuts are slow.' }),
+    t(5, 'Pressure Washer', 'Yard & Maintenance', 'Sarah Jenkins', 'pressure-washer', {
+      status: 'Checked Out', borrower: 'Marcus Lee', due: addDays(-5), waitlist: ['Priya Patel', 'Alex Kim'] }),
+    t(6, 'Hedge Trimmer', 'Gardening', 'Priya Patel', 'hedge-trimmer'),
+    t(7, 'Stand Mixer', 'Kitchen', 'Sarah Jenkins', 'stand-mixer', {
+      reservations: [{ name: 'Maninder Kaur', start: addDays(0), end: addDays(1) }] }),
+    t(8, '4-Person Tent', 'Camping', 'Alex Kim', 'tent', {
+      reservations: [{ name: 'Ruthu Shankar', start: addDays(9), end: addDays(12) }] }),
+  ];
+}
 
-// Past loans for the demo: [tool id, borrower, days ago]. Dates stay relative to today.
+// [tool id, borrower, days ago, days kept (null = still out), condition, note]. Loans are due after 7 days.
 const MOCK_LOAN_ROWS = [
-  [1, 'Sarah Jenkins', 61], [3, 'Priya Patel', 58], [7, 'Alex Kim', 55], [4, 'Priya Patel', 51],
-  [1, 'Alex Kim', 47], [6, 'Marcus Lee', 44], [8, 'Sarah Jenkins', 40], [3, 'Marcus Lee', 37],
-  [1, 'Priya Patel', 33], [5, 'Alex Kim', 30], [7, 'Priya Patel', 27], [2, 'Marcus Lee', 24],
-  [4, 'Sarah Jenkins', 21], [6, 'Alex Kim', 18], [1, 'Sarah Jenkins', 16], [8, 'Priya Patel', 14],
-  [5, 'Marcus Lee', 12], [3, 'Sarah Jenkins', 9], [1, 'Alex Kim', 6], [7, 'Marcus Lee', 4], [2, 'Sarah Jenkins', 2],
+  [1, 'Sarah Jenkins', 61, 5, 'Good'], [3, 'Priya Patel', 58, 3, 'Good'], [7, 'Alex Kim', 55, 2, 'Good'],
+  [4, 'Priya Patel', 51, 6, 'Good'], [1, 'Alex Kim', 47, 4, 'Good'], [6, 'Marcus Lee', 44, 10, 'Good', 'Sorry it was late!'],
+  [8, 'Sarah Jenkins', 40, 6, 'Good'], [3, 'Marcus Lee', 37, 9, 'Needs attention', 'Tyre is a bit flat'],
+  [1, 'Priya Patel', 33, 2, 'Good'], [7, 'Ria Nimbkar', 31, 3, 'Good', 'Made 4 dozen cookies, thank you!'],
+  [5, 'Alex Kim', 30, 5, 'Good'], [7, 'Priya Patel', 27, 3, 'Good'], [6, 'Sooryashankar Joy', 26, 6, 'Good'],
+  [2, 'Marcus Lee', 24, 7, 'Good'], [1, 'Maninder Kaur', 22, 4, 'Good'], [4, 'Sarah Jenkins', 21, 5, 'Good'],
+  [6, 'Alex Kim', 18, 7, 'Good'], [3, 'Ruthu Shankar', 17, 2, 'Good'], [1, 'Sarah Jenkins', 16, 3, 'Good'],
+  [8, 'Priya Patel', 14, 6, 'Good'], [5, 'Marcus Lee', 12, null], [4, 'Ria Nimbkar', 11, 5, 'Needs attention', 'Blade is getting dull, cuts are slow.'],
+  [3, 'Sarah Jenkins', 9, 2, 'Good'], [1, 'Alex Kim', 6, 3, 'Good'], [7, 'Sooryashankar Joy', 4, 2, 'Good'],
+  [2, 'Sarah Jenkins', 2, null],
 ];
 function mockLoans() {
-  return MOCK_LOAN_ROWS.map(([id, borrower, ago]) => {
-    const t = MOCK_DATA.find(t => t.id === id);
-    return { date: addDays(-ago), toolId: id, tool: t.name, category: t.category, borrower, owner: t.owner };
+  const byId = Object.fromEntries(mockTools().map(t => [t.id, t]));
+  return MOCK_LOAN_ROWS.map(([id, borrower, agoDays, kept, condition = '', note = '']) => {
+    const t = byId[id], date = addDays(-agoDays);
+    return { date, toolId: id, tool: t.name, category: t.category, borrower, owner: t.owner,
+      due: shiftISO(date, LOAN_DAYS), returned: kept == null ? '' : shiftISO(date, kept), condition, note };
   });
+}
+
+function mockRequests() {
+  return [
+    { id: 1, tool: 'Tile Saw', note: 'Redoing the bathroom floor this weekend', by: 'Ria Nimbkar', date: addDays(-1), status: 'open' },
+    { id: 2, tool: 'Carpet Cleaner', note: 'Puppy + new rug = disaster', by: 'Maninder Kaur', date: addDays(-3), status: 'open' },
+    { id: 3, tool: 'Kayak', note: 'Lake trip next month, happy to swap for baked goods!', by: 'Ruthu Shankar', date: addDays(-5), status: 'open' },
+    { id: 4, tool: 'Label Maker', note: 'Garage organisation project', by: 'Sooryashankar Joy', date: addDays(-6), status: 'open' },
+  ];
 }
 
 // localStorage can throw (private mode, blocked storage), so every access is guarded.
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
   del(k) { try { localStorage.removeItem(k); } catch {} },
 };
 
 // ─── State ─────────────────────────────────────────────────────────────────
 let tools = [];
 let loans = [];
+let requests = [];
 let query = '';
 let activeCategory = 'All';
 let mode = SHEET_ENDPOINT ? 'live' : 'demo';
 let busy = false;           // pause polling while a write is in flight
 let flashId = null;
-let user = store.get('borrowbloc_user', null);
+let user = store.get(KEYS.user, null);
 let afterLogin = null;      // action to resume once someone signs in
+let tour = null;            // guided tour state; writes are sandboxed while it runs
 
 const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const localISO = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const todayISO = () => localISO(new Date());
-const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return localISO(d); };
-const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
-const isOverdue = t => t.status === 'Checked Out' && t.due && t.due < todayISO();
 const safePhoto = p => /^(data:image\/(png|jpe?g|webp|gif);base64,|https:\/\/|assets\/[\w\/.-]+$)/.test(p || '') ? p : '';
 const sameName = (a, b) => !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
-const firstName = n => (n || '').split(' ')[0];
-const heldFor = t => (t.status === 'Available' && t.waitlist.length ? t.waitlist[0] : '');
 const isMe = n => !!user && sameName(n, user.name);
+const firstName = n => (n || '').split(' ')[0];
 const money = n => '$' + Math.round(n).toLocaleString();
+const isOverdue = t => t.status === 'Checked Out' && t.due && t.due < todayISO();
+const isBroken = t => t.condition === 'Broken';
+const activeRes = t => t.reservations.find(r => r.start <= todayISO() && todayISO() <= r.end);
+// Who gets first dibs on an available tool: today's booking, else the head of the waitlist.
+const heldFor = t => (t.status !== 'Available' || isBroken(t) ? '' : activeRes(t)?.name || t.waitlist[0] || '');
+const nextResFor = (t, name) => t.reservations.filter(r => r.start > todayISO() && !sameName(r.name, name)).sort((a, b) => a.start.localeCompare(b.start))[0];
 
 // ─── Branding ──────────────────────────────────────────────────────────────
 // Navbar logo is assets/favico.png, browser-tab icon is assets/image.png;
@@ -224,7 +290,7 @@ function setupBranding() {
 
 // ─── Accounts ──────────────────────────────────────────────────────────────
 function allAccounts() {
-  const extra = store.get('borrowbloc_accounts', []);
+  const extra = store.get(KEYS.accounts, []);
   return [...DEMO_ACCOUNTS, ...extra.filter(a => !DEMO_ACCOUNTS.some(d => sameName(d.name, a.name)))];
 }
 function accountFor(name) { return allAccounts().find(a => sameName(a.name, name)); }
@@ -237,19 +303,21 @@ function avatar(name, size = 'w-8 h-8 text-xs') {
   return `<span class="${size} ${avatarColor(name)} shrink-0 rounded-full grid place-items-center text-white font-semibold">${esc(initials(name))}</span>`;
 }
 
-function signIn(account) {
+function setUser(account) {
   user = { name: account.name, home: account.home || '' };
-  store.set('borrowbloc_user', user);
-  const extra = store.get('borrowbloc_accounts', []);
-  if (!allAccounts().some(a => sameName(a.name, user.name))) store.set('borrowbloc_accounts', [...extra, user]);
-  closeModal();
-  toast(`Welcome, ${user.name.split(' ')[0]}! 👋`);
+  store.set(KEYS.user, user);
+  if (!allAccounts().some(a => sameName(a.name, user.name))) store.set(KEYS.accounts, [...store.get(KEYS.accounts, []), user]);
   render();
+}
+function signIn(account) {
+  setUser(account);
+  closeModal();
+  toast(`Welcome, ${firstName(user.name)}! 👋`);
   const next = afterLogin; afterLogin = null;
   if (next) next();
 }
 function signOut() {
-  user = null; store.del('borrowbloc_user');
+  user = null; store.del(KEYS.user);
   if (activeCategory === 'Mine') activeCategory = 'All';
   render(); toast('Signed out');
 }
@@ -260,17 +328,19 @@ function requireUser(next) {
 }
 
 function openLogin() {
+  const accts = allAccounts();
   openModal(`
     <div class="p-6 pb-0 flex items-start justify-between">
       <div><div class="font-semibold text-lg">Sign in to BorrowBloc</div><div class="text-sm text-slate-500">Demo accounts, no password needed.</div></div>
       <button data-close class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
     </div>
-    <div class="p-6 space-y-2" id="accountList">
-      ${allAccounts().map((a, i) => `
+    <div class="p-6 grid sm:grid-cols-2 gap-2" id="accountList">
+      ${accts.map((a, i) => `
         <button data-acct="${i}" class="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50 text-left">
           ${avatar(a.name, 'w-10 h-10 text-sm')}
-          <span class="flex-1"><span class="block font-medium">${esc(a.name)}</span><span class="block text-xs text-slate-500">${esc(a.home || 'Neighbor')}</span></span>
-          <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400"></i>
+          <span class="flex-1 min-w-0"><span class="block font-medium truncate">${esc(a.name)}</span>
+          <span class="block text-xs text-slate-500 truncate">${esc(a.home || 'Neighbor')}</span>
+          <span class="block mt-1">${trustBadge(a.name)}</span></span>
         </button>`).join('')}
     </div>
     <form id="newAcct" class="px-6 pb-6 pt-2 border-t border-slate-100 space-y-3">
@@ -280,8 +350,7 @@ function openLogin() {
         <input name="home" maxlength="30" placeholder="House #" class="w-28 px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
       </div>
       <button class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl">Join</button>
-    </form>`, false);
-  const accts = allAccounts();
+    </form>`, false, 'max-w-2xl');
   $('accountList').onclick = e => { const b = e.target.closest('[data-acct]'); if (b) signIn(accts[Number(b.dataset.acct)]); };
   $('newAcct').onsubmit = e => {
     e.preventDefault();
@@ -301,13 +370,14 @@ function renderAccount() {
   el.innerHTML = `
     <div class="relative">
       <button id="acctBtn" class="flex items-center gap-2 rounded-full hover:bg-slate-100 pr-2">
-        ${avatar(user.name)}<span class="hidden sm:inline text-sm font-medium">${esc(user.name.split(' ')[0])}</span>
+        ${avatar(user.name)}<span class="hidden sm:inline text-sm font-medium">${esc(firstName(user.name))}</span>
         <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 hidden sm:inline"></i>
       </button>
-      <div id="acctMenu" class="hidden absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-lg p-1.5 text-sm">
+      <div id="acctMenu" class="hidden absolute right-0 mt-2 w-60 bg-white border border-slate-200 rounded-xl shadow-lg p-1.5 text-sm">
         <div class="px-3 py-2 border-b border-slate-100 mb-1">
           <div class="font-medium">${esc(user.name)}</div>
           <div class="text-xs text-slate-500">${esc(user.home || 'Neighbor')}</div>
+          <div class="mt-1.5 flex items-center gap-1.5">${trustBadge(user.name)}<span class="text-[11px] text-slate-500">${esc(trust(user.name).detail)}</span></div>
         </div>
         <button data-menu="mine" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-100"><i data-lucide="user" class="w-4 h-4"></i>My stuff</button>
         <button data-menu="switch" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-100"><i data-lucide="users" class="w-4 h-4"></i>Switch account</button>
@@ -322,8 +392,7 @@ function renderAccount() {
     if (b.dataset.menu === 'switch') openLogin();
     if (b.dataset.menu === 'out') signOut();
   };
-  const mine = tools.filter(t => t.status === 'Checked Out' && sameName(t.borrower, user.name));
-  const late = mine.filter(isOverdue).length;
+  const late = tools.filter(t => isOverdue(t) && isMe(t.borrower)).length;
   const ready = tools.find(t => isMe(heldFor(t)));
   $('greeting').textContent = late
     ? `Hi ${firstName(user.name)}, ${late} of your loans ${late === 1 ? 'is' : 'are'} overdue`
@@ -332,6 +401,30 @@ function renderAccount() {
       : `Hi ${firstName(user.name)}, what are you building today?`;
 }
 document.addEventListener('click', () => $('acctMenu')?.classList.add('hidden'));
+
+// ─── Trust ─────────────────────────────────────────────────────────────────
+// A neighbor's track record, computed from the loan history.
+function trust(name) {
+  const done = loans.filter(l => sameName(l.borrower, name) && l.returned);
+  const onTime = done.filter(l => !l.due || l.returned <= l.due).length;
+  const lateNow = tools.some(t => isOverdue(t) && sameName(t.borrower, name));
+  const broke = done.some(l => l.condition === 'Broken');
+  const rate = done.length ? onTime / done.length : 1;
+  const level =
+    done.length < 2 && !lateNow ? ['New neighbor', 'bg-slate-100 text-slate-600', 'sprout']
+    : rate >= 0.9 && !lateNow && !broke ? ['Trusted', 'bg-emerald-100 text-emerald-700', 'shield-check']
+    : rate >= 0.6 && !lateNow ? ['Reliable', 'bg-sky-100 text-sky-700', 'thumbs-up']
+    : ['Often late', 'bg-amber-100 text-amber-700', 'alarm-clock'];
+  return {
+    label: level[0], cls: level[1], icon: level[2], done: done.length, rate, lateNow,
+    detail: done.length ? `${done.length} returns · ${Math.round(rate * 100)}% on time` : 'No returns yet',
+  };
+}
+function trustBadge(name) {
+  if (!name) return '';
+  const t = trust(name);
+  return `<span class="inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded-full ${t.cls}" title="${esc(t.detail)}"><i data-lucide="${t.icon}" class="w-3 h-3"></i>${t.label}</span>`;
+}
 
 // ─── Photos ────────────────────────────────────────────────────────────────
 // Shrink to a small JPEG so it fits in one sheet cell and in localStorage.
@@ -379,45 +472,9 @@ function photoPicker(inputId, previewId, initial = '') {
 }
 
 // ─── Data layer ────────────────────────────────────────────────────────────
-function loadLocal() {
-  loans = store.get('borrowbloc_loans', null) || mockLoans();
-  const saved = store.get('borrowbloc', null);
-  if (!saved) return structuredClone(MOCK_DATA).map(normalize);
-  // Data saved by an older version lacks photos, owners or waitlists; fill them from the samples.
-  return saved.map(r => {
-    const m = MOCK_DATA.find(m => m.id === r.id && m.name === r.name);
-    return normalize(m ? { ...r, photo: r.photo || m.photo, owner: r.owner || m.owner, waitlist: r.waitlist ?? m.waitlist } : r);
-  });
-}
-function saveLocal() {
-  try {
-    localStorage.setItem('borrowbloc', JSON.stringify(tools));
-    localStorage.setItem('borrowbloc_loans', JSON.stringify(loans));
-  } catch { toast('Browser storage is full, photo not saved locally', true); }
-}
-
-async function fetchTools() {
-  if (mode !== 'live') return;
-  try {
-    const res = await fetch(SHEET_ENDPOINT, { cache: 'no-store' });
-    const data = await res.json();
-    if (!Array.isArray(data.tools)) throw new Error('bad payload');
-    const before = JSON.stringify(tools);
-    const next = data.tools.map(normalize);
-    const nextLoans = Array.isArray(data.loans) ? data.loans : loans;
-    if (!busy && JSON.stringify(nextLoans) !== JSON.stringify(loans)) { loans = nextLoans; if (JSON.stringify(next) === before) render(); }
-    if (!busy && JSON.stringify(next) !== before) {
-      // Highlight whichever card changed remotely (e.g. someone edited the sheet).
-      const changed = next.find(n => { const o = tools.find(t => t.id === n.id); return !o || JSON.stringify(o) !== JSON.stringify(n); });
-      tools = next;
-      if (changed && before !== '[]') flashId = changed.id;
-      render();
-    }
-    setSync('live');
-  } catch (e) {
-    console.warn('Sheet fetch failed', e);
-    setSync('offline');
-  }
+function parseList(v) {
+  if (Array.isArray(v)) return v;
+  try { const j = JSON.parse(v || '[]'); return Array.isArray(j) ? j : []; } catch { return []; }
 }
 
 function normalize(r) {
@@ -433,10 +490,62 @@ function normalize(r) {
     photo: safePhoto(r.photo),
     waitlist: (Array.isArray(r.waitlist) ? r.waitlist : String(r.waitlist || '').split(','))
       .map(n => String(n).trim()).filter(n => n && n !== '—'),
+    reservations: parseList(r.reservations)
+      .filter(x => x && x.name && x.start && x.end && x.end >= todayISO())
+      .map(x => ({ name: String(x.name), start: String(x.start).slice(0, 10), end: String(x.end).slice(0, 10) }))
+      .sort((a, b) => a.start.localeCompare(b.start)),
+    condition: ['Needs attention', 'Broken'].includes(r.condition) ? r.condition : 'Good',
+    conditionNote: blank(r.conditionNote),
   };
+}
+const normalizeLoan = l => ({
+  date: String(l.date || '').slice(0, 10), toolId: Number(l.toolId), tool: l.tool || '', category: l.category || '',
+  borrower: l.borrower || '', owner: l.owner || '', due: String(l.due || '').slice(0, 10),
+  returned: String(l.returned || '').slice(0, 10), condition: l.condition || '', note: l.note || '',
+});
+const normalizeRequest = r => ({
+  id: Number(r.id), tool: r.tool || '', note: r.note || '', by: r.by || '', date: String(r.date || '').slice(0, 10),
+  status: ['fulfilled', 'closed'].includes(r.status) ? r.status : 'open', fulfilledBy: r.fulfilledBy || '', fulfilledOn: String(r.fulfilledOn || '').slice(0, 10),
+});
+
+function loadLocal() {
+  tools = (store.get(KEYS.tools, null) || mockTools()).map(normalize);
+  loans = (store.get(KEYS.loans, null) || mockLoans()).map(normalizeLoan);
+  requests = (store.get(KEYS.requests, null) || mockRequests()).map(normalizeRequest);
+}
+function saveLocal() {
+  const ok = store.set(KEYS.tools, tools) && store.set(KEYS.loans, loans) && store.set(KEYS.requests, requests);
+  if (!ok) toast('Browser storage is full, change not saved locally', true);
+}
+
+async function fetchAll() {
+  if (mode !== 'live' || tour) return;
+  try {
+    const res = await fetch(SHEET_ENDPOINT, { cache: 'no-store' });
+    const data = await res.json();
+    if (!Array.isArray(data.tools)) throw new Error('bad payload');
+    if (busy || tour) return;
+    const before = JSON.stringify([tools, loans, requests]);
+    const next = data.tools.map(normalize);
+    const nextLoans = (data.loans || []).map(normalizeLoan);
+    const nextReqs = (data.requests || []).map(normalizeRequest);
+    if (JSON.stringify([next, nextLoans, nextReqs]) !== before) {
+      // Highlight whichever card changed remotely (e.g. someone edited the sheet).
+      const changed = next.find(n => { const o = tools.find(t => t.id === n.id); return !o || JSON.stringify(o) !== JSON.stringify(n); });
+      const first = !tools.length;
+      tools = next; loans = nextLoans; requests = nextReqs;
+      if (changed && !first) flashId = changed.id;
+      render();
+    }
+    setSync('live');
+  } catch (e) {
+    console.warn('Sheet fetch failed', e);
+    setSync('offline');
+  }
 }
 
 async function write(action, payload) {
+  if (tour) return true;                     // the tour works on a scratch copy
   if (mode !== 'live') { saveLocal(); return true; }
   busy = true;
   try {
@@ -447,73 +556,167 @@ async function write(action, payload) {
     return true;
   } catch (e) {
     console.warn(e);
-    toast('Could not reach the sheet, change not saved', true);
+    toast(e.message && !/fetch|network/i.test(e.message) ? e.message : 'Could not reach the sheet, change not saved', true);
     return false;
   } finally {
     busy = false;
   }
 }
 
-// ─── Actions ───────────────────────────────────────────────────────────────
-async function checkout(id, due) {
-  const t = tools.find(t => t.id === id); const prev = { ...t };
-  Object.assign(t, { status: 'Checked Out', borrower: user.name, due, waitlist: t.waitlist.filter(n => !isMe(n)) });
-  loans.push({ date: todayISO(), toolId: id, tool: t.name, category: t.category, borrower: user.name, owner: t.owner });
-  flashId = id; closeModal(); render();
-  if (await write('checkout', { id, borrower: user.name, due })) toast(`${t.name} is yours until ${fmtDate(due)}. Enjoy!`);
-  else { Object.assign(t, prev); loans.pop(); render(); }
+// Apply a change optimistically, persist it, and roll back if the write fails.
+async function mutate(apply, action, payload) {
+  const snap = JSON.stringify([tools, loans, requests]);
+  apply(); render();
+  const ok = await write(action, payload);
+  if (!ok) { [tools, loans, requests] = JSON.parse(snap); render(); }
+  return ok;
 }
 
-async function giveBack(id) {
-  const t = tools.find(t => t.id === id); const prev = { ...t };
+// ─── Actions ───────────────────────────────────────────────────────────────
+const toolById = id => tools.find(t => t.id === id);
+
+async function checkout(id, due) {
+  const t = toolById(id);
+  flashId = id; closeModal();
+  const ok = await mutate(() => {
+    Object.assign(t, { status: 'Checked Out', borrower: user.name, due });
+    t.waitlist = t.waitlist.filter(n => !isMe(n));
+    t.reservations = t.reservations.filter(r => !(isMe(r.name) && r.start <= todayISO()));
+    loans.push({ date: todayISO(), toolId: id, tool: t.name, category: t.category, borrower: user.name, owner: t.owner, due, returned: '', condition: '', note: '' });
+  }, 'checkout', { id, borrower: user.name, due });
+  if (ok) toast(`${t.name} is yours until ${fmtDate(due)}. Enjoy!`);
+}
+
+async function giveBack(id, condition, note) {
+  const t = toolById(id);
   const returner = t.borrower;
-  Object.assign(t, { status: 'Available', borrower: '', due: '' });
-  flashId = id; closeModal(); render();
-  if (!(await write('return', { id }))) { Object.assign(t, prev); render(); return; }
-  const next = t.waitlist[0];
-  if (!next) return toast(`Thanks for returning the ${t.name}!`);
-  // Hand-off: offer to tell the next person in line that it's back.
-  const home = accountFor(t.owner)?.home;
-  const msg = `Hi ${firstName(next)}! The ${t.name} is back${t.owner ? ` at ${firstName(t.owner)}'s${home ? ` (${home})` : ''}` : ''} and you're first in line on BorrowBloc. It's held for you, grab it when you're ready!`;
+  flashId = id; closeModal();
+  const ok = await mutate(() => {
+    Object.assign(t, { status: 'Available', borrower: '', due: '', condition, conditionNote: condition === 'Good' ? '' : note });
+    const loan = [...loans].reverse().find(l => l.toolId === id && !l.returned);
+    if (loan) Object.assign(loan, { returned: todayISO(), condition, note });
+  }, 'return', { id, condition, note });
+  if (!ok) return;
+
+  // Hand-offs: tell the owner about damage, and the next person that it's back.
+  const blocks = [];
+  if (condition !== 'Good' && t.owner && !isMe(t.owner)) {
+    blocks.push(nudgeHTML(t.owner,
+      `Hi ${firstName(t.owner)}, I just returned your ${t.name} on BorrowBloc. Heads up: ${condition === 'Broken' ? "it's broken" : 'it needs a bit of attention'}${note ? ` (${note})` : ''}. Happy to help sort it out!`,
+      `Let ${esc(firstName(t.owner))} know`));
+  }
+  const next = heldFor(t);
+  if (next && !isBroken(t)) {
+    const home = accountFor(t.owner)?.home;
+    blocks.push(nudgeHTML(next,
+      `Hi ${firstName(next)}! The ${t.name} is back${t.owner ? ` at ${firstName(t.owner)}'s${home ? ` (${home})` : ''}` : ''} and it's held for you on BorrowBloc. Grab it when you're ready!`,
+      `Let ${esc(firstName(next))} know it's back`));
+  }
+  if (!blocks.length) return toast(`Thanks for returning the ${t.name}!`);
   openModal(`
     <div class="p-6 space-y-4">
       <div class="flex items-start justify-between">
-        <div><div class="font-semibold text-lg">Thanks${isMe(returner) ? '' : ` for logging it`}! 🙌</div>
-        <div class="text-sm text-slate-500">${esc(t.name)} is now held for <b>${esc(next)}</b>, first in line.</div></div>
+        <div><div class="font-semibold text-lg">Thanks${isMe(returner) ? '' : ' for logging it'}! 🙌</div>
+        <div class="text-sm text-slate-500">${next && !isBroken(t) ? `${esc(t.name)} is now held for <b>${esc(next)}</b>.` : `${esc(t.name)} is marked <b>${esc(condition)}</b>.`}</div></div>
         <button data-close class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
-      ${nudgeHTML(next, msg, `Let ${esc(firstName(next))} know`)}
+      ${blocks.join('')}
     </div>`, false);
 }
 
-async function joinWaitlist(id) {
-  const t = tools.find(t => t.id === id);
-  if (t.waitlist.some(isMe)) return;
-  t.waitlist.push(user.name); render(); openTool(id);
-  if (await write('join', { id, name: user.name })) toast(`You're #${t.waitlist.length} in line for the ${t.name}`);
-  else { t.waitlist = t.waitlist.filter(n => !isMe(n)); render(); openTool(id); }
+async function markFixed(id) {
+  const t = toolById(id);
+  if (await mutate(() => Object.assign(t, { condition: 'Good', conditionNote: '' }), 'fixed', { id })) {
+    toast(`${t.name} is back in action 🔧`); openTool(id);
+  }
 }
 
-async function leaveWaitlist(id, name) {
-  const t = tools.find(t => t.id === id); const prev = [...t.waitlist];
-  t.waitlist = t.waitlist.filter(n => !sameName(n, name)); render(); openTool(id);
-  if (await write('leave', { id, name })) toast(isMe(name) ? 'You left the line' : `Hold released, ${firstName(t.waitlist[0] || '') || 'anyone'} can borrow it now`);
-  else { t.waitlist = prev; render(); openTool(id); }
-}
-
-async function addTool(name, category, photo) {
+async function addTool(name, category, photo, requestId) {
   const id = tools.reduce((m, t) => Math.max(m, t.id), 0) + 1;
-  const t = { id, name, category, status: 'Available', borrower: '', due: '', owner: user.name, photo };
-  tools.push(t); flashId = id; closeModal(); render();
-  if (await write('add', t)) toast(`${name} added to the library 🎉`);
-  else { tools = tools.filter(x => x.id !== id); render(); }
+  const t = normalize({ id, name, category, status: 'Available', owner: user.name, photo });
+  flashId = id; closeModal();
+  const req = requests.find(r => r.id === requestId);
+  const ok = await mutate(() => {
+    tools.push(t);
+    if (req) Object.assign(req, { status: 'fulfilled', fulfilledBy: user.name, fulfilledOn: todayISO() });
+  }, 'add', { ...t, requestId });
+  if (!ok) return;
+  if (!req) return toast(`${name} added to the library 🎉`);
+  openModal(`
+    <div class="p-6 space-y-4">
+      <div class="flex items-start justify-between">
+        <div><div class="font-semibold text-lg">You made ${esc(firstName(req.by))}'s day 🎉</div>
+        <div class="text-sm text-slate-500">${esc(name)} is listed and the request is marked found.</div></div>
+        <button data-close class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      ${nudgeHTML(req.by, `Hi ${firstName(req.by)}! Saw your BorrowBloc request, I've got a ${name} you can borrow. It's listed now, grab it whenever!`, `Let ${esc(firstName(req.by))} know`)}
+    </div>`, false);
 }
 
 async function setPhoto(id, photo) {
-  const t = tools.find(t => t.id === id); const prev = t.photo;
-  t.photo = photo; flashId = id; closeModal(); render();
-  if (await write('photo', { id, photo })) toast('Photo updated');
-  else { t.photo = prev; render(); }
+  const t = toolById(id);
+  flashId = id; closeModal();
+  if (await mutate(() => { t.photo = photo; }, 'photo', { id, photo })) toast('Photo updated');
+}
+
+async function joinWaitlist(id) {
+  const t = toolById(id);
+  if (t.waitlist.some(isMe)) return;
+  const ok = await mutate(() => t.waitlist.push(user.name), 'join', { id, name: user.name });
+  openTool(id);
+  if (ok) toast(`You're #${t.waitlist.length} in line for the ${t.name}`);
+}
+
+async function leaveWaitlist(id, name) {
+  const t = toolById(id);
+  const ok = await mutate(() => { t.waitlist = t.waitlist.filter(n => !sameName(n, name)); }, 'leave', { id, name });
+  openTool(id);
+  if (ok) toast(isMe(name) ? 'You left the line' : 'Hold released');
+}
+
+function reserveError(t, start, end) {
+  if (!start || !end) return 'Pick a start and end date';
+  if (start < todayISO()) return "Can't book days in the past";
+  if (end < start) return 'End date is before the start';
+  if (daysBetween(start, end) >= MAX_BOOKING_DAYS) return `Bookings are ${MAX_BOOKING_DAYS} days max`;
+  if (t.status === 'Checked Out' && t.due && start <= t.due) return `It's out until ${fmtDate(t.due)}`;
+  const clash = t.reservations.find(r => start <= r.end && r.start <= end);
+  if (clash) return `Clashes with ${isMe(clash.name) ? 'your' : firstName(clash.name) + "'s"} booking (${fmtDate(clash.start)}–${fmtDate(clash.end)})`;
+  return '';
+}
+
+async function reserve(id, start, end) {
+  const t = toolById(id);
+  const err = reserveError(t, start, end);
+  if (err) return toast(err, true);
+  const ok = await mutate(() => {
+    t.reservations.push({ name: user.name, start, end });
+    t.reservations.sort((a, b) => a.start.localeCompare(b.start));
+  }, 'reserve', { id, name: user.name, start, end });
+  openTool(id);
+  if (ok) toast(`Booked ${fmtDate(start)}${end !== start ? `–${fmtDate(end)}` : ''} 📅`);
+}
+
+async function unreserve(id, name, start) {
+  const t = toolById(id);
+  const ok = await mutate(() => { t.reservations = t.reservations.filter(r => !(sameName(r.name, name) && r.start === start)); }, 'unreserve', { id, name, start });
+  openTool(id);
+  if (ok) toast('Booking cancelled');
+}
+
+async function askTool(tool, note) {
+  const id = requests.reduce((m, r) => Math.max(m, r.id), 0) + 1;
+  closeModal();
+  const r = { id, tool, note, by: user.name, date: todayISO(), status: 'open', fulfilledBy: '', fulfilledOn: '' };
+  if (await mutate(() => requests.push(r), 'request', r)) {
+    toast('Request posted to the street 📣');
+    $('requests').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+async function closeRequest(id) {
+  const r = requests.find(r => r.id === id);
+  if (await mutate(() => { r.status = 'closed'; }, 'closeRequest', { id })) toast('Request closed');
 }
 
 // ─── Rendering ─────────────────────────────────────────────────────────────
@@ -531,21 +734,108 @@ function setSync(state) {
 function renderStats() {
   const out = tools.filter(t => t.status === 'Checked Out');
   $('statTotal').textContent = tools.length;
-  $('statAvail').textContent = tools.length - out.length;
+  $('statAvail').textContent = tools.filter(t => t.status === 'Available' && !isBroken(t)).length;
   $('statOut').textContent = out.length;
   $('statSaved').textContent = money(loans.reduce((s, l) => s + meta(l.category).value, 0));
   $('statSavedSub').textContent = `across ${loans.length} loans between neighbors`;
+}
+
+function renderFilters() {
+  const cats = [...(user ? ['Mine'] : []), 'All', ...new Set(tools.map(t => t.category))];
+  $('filters').innerHTML = cats.map(c => `
+    <button data-cat="${esc(c)}" class="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border ${c === activeCategory ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 hover:border-slate-400'}">${c === 'Mine' ? '<i data-lucide="user" class="w-4 h-4"></i>My stuff' : esc(c)}</button>`).join('');
+}
+
+const pill = (bg, dot, label) => `<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full shadow-sm ${bg}"><span class="w-1.5 h-1.5 rounded-full ${dot}"></span>${label}</span>`;
+function badgeHTML(t) {
+  if (isBroken(t)) return pill('bg-slate-200 text-slate-700', 'bg-slate-500', 'Out for repair');
+  const held = heldFor(t);
+  if (held) {
+    const booked = activeRes(t) && sameName(activeRes(t).name, held);
+    return pill('bg-violet-100 text-violet-700', 'bg-violet-500',
+      `${booked ? 'Reserved' : 'Held'} for ${isMe(held) ? 'you' : esc(firstName(held))}`);
+  }
+  if (t.status === 'Available') return pill('bg-emerald-100 text-emerald-700', 'bg-emerald-500', 'Available');
+  if (isOverdue(t)) return pill('bg-red-100 text-red-700', 'bg-red-500', 'Overdue');
+  return pill('bg-amber-100 text-amber-700', 'bg-amber-500', 'Checked Out');
+}
+
+function cardHTML(t) {
+  const avail = t.status === 'Available';
+  const overdue = isOverdue(t);
+  const held = heldFor(t);
+  const link = (cls, icon, label) => `<span class="${cls} font-medium inline-flex items-center gap-1"><i data-lucide="${icon}" class="w-4 h-4"></i>${label}</span>`;
+  const footer = isBroken(t) ? link('text-slate-500', 'wrench', 'Out for repair')
+    : held && !isMe(held) ? (activeRes(t) ? link('text-violet-700', 'calendar-days', 'Booked today') : link('text-violet-700', 'users', 'Join the line'))
+    : avail ? `<span class="text-emerald-700 font-medium inline-flex items-center gap-1">${held ? 'Your turn' : 'Borrow'} <i data-lucide="arrow-right" class="w-4 h-4"></i></span>`
+    : `<span class="inline-flex items-center gap-1.5 text-slate-600 min-w-0"><i data-lucide="user" class="w-4 h-4 shrink-0"></i><span class="truncate">${isMe(t.borrower) ? 'You' : esc(t.borrower)}</span></span>
+       <span class="shrink-0 ${overdue ? 'text-red-600 font-medium' : 'text-slate-500'}">${t.due ? fmtDate(t.due) : ''}</span>`;
+  const upcoming = t.reservations.filter(r => r.start > todayISO()).length;
+  return `
+    <button data-id="${t.id}" class="card-enter ${t.id === flashId ? 'flash' : ''} group text-left bg-white rounded-2xl border ${overdue ? 'border-red-200' : 'border-slate-200'} overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition focus:outline-none focus:ring-2 focus:ring-emerald-500 flex flex-col">
+      <div class="relative aspect-square w-full overflow-hidden ${avail && !isBroken(t) ? '' : 'grayscale-[40%]'}">
+        ${photoHTML(t)}
+        <div class="absolute top-2 left-2">${badgeHTML(t)}</div>
+        ${t.condition === 'Needs attention' ? `<div class="absolute bottom-2 left-2 inline-flex items-center gap-1 text-xs font-medium bg-amber-100/95 text-amber-800 px-2 py-1 rounded-full shadow-sm"><i data-lucide="wrench" class="w-3.5 h-3.5"></i>Needs attention</div>` : ''}
+        <div class="absolute bottom-2 right-2 flex gap-1">
+          ${upcoming ? `<span class="inline-flex items-center gap-1 text-xs font-medium bg-white/90 text-slate-700 px-2 py-1 rounded-full shadow-sm" title="Upcoming bookings"><i data-lucide="calendar-days" class="w-3.5 h-3.5"></i>${upcoming}</span>` : ''}
+          ${t.waitlist.length ? `<span class="inline-flex items-center gap-1 text-xs font-medium bg-white/90 text-slate-700 px-2 py-1 rounded-full shadow-sm"><i data-lucide="users" class="w-3.5 h-3.5"></i>${t.waitlist.length} waiting</span>` : ''}
+        </div>
+      </div>
+      <div class="p-3 sm:p-4 flex-1 flex flex-col">
+        <div class="font-semibold leading-snug truncate">${esc(t.name)}</div>
+        <div class="text-xs sm:text-sm text-slate-500 truncate">${esc(t.category)}${t.owner ? ' · ' + (isMe(t.owner) ? 'yours' : esc(firstName(t.owner)) + "'s") : ''}</div>
+        <div class="mt-auto pt-3"><div class="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 text-xs sm:text-sm">${footer}</div></div>
+      </div>
+    </button>`;
+}
+
+function renderRequests() {
+  const week = addDays(-7);
+  const list = requests
+    .filter(r => r.status === 'open' || (r.status === 'fulfilled' && r.fulfilledOn >= week))
+    .sort((a, b) => (a.status === b.status ? b.date.localeCompare(a.date) : a.status === 'open' ? -1 : 1));
+  const btn = 'text-sm font-medium py-2 rounded-lg inline-flex items-center justify-center gap-1.5';
+  $('requests').innerHTML = `
+    <div class="flex items-end justify-between gap-3 mb-3">
+      <div>
+        <h2 class="text-xl font-bold flex items-center gap-2"><i data-lucide="lightbulb" class="w-5 h-5 text-amber-500"></i>Wish list</h2>
+        <p class="text-sm text-slate-500">Neighbors are looking for these. Got one gathering dust? List it.</p>
+      </div>
+      <button data-action="ask" class="shrink-0 inline-flex items-center gap-1.5 bg-white border border-slate-200 hover:border-slate-400 text-sm font-medium px-3 py-2 rounded-lg">
+        <i data-lucide="message-square-plus" class="w-4 h-4"></i><span class="hidden sm:inline">Ask for a tool</span><span class="sm:hidden">Ask</span>
+      </button>
+    </div>
+    <div class="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 snap-x">
+      ${list.map(r => `
+        <div class="snap-start shrink-0 w-64 bg-white rounded-2xl border ${r.status === 'fulfilled' ? 'border-emerald-200' : 'border-slate-200'} p-4 flex flex-col gap-3">
+          <div class="flex items-start justify-between gap-2">
+            <div class="font-semibold">${esc(r.tool)}</div>
+            ${r.status === 'fulfilled' ? '<span class="shrink-0 text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">Found!</span>' : ''}
+          </div>
+          ${r.note ? `<div class="text-sm text-slate-600">“${esc(r.note)}”</div>` : ''}
+          <div class="flex items-center gap-2 text-xs text-slate-500 mt-auto">${avatar(r.by, 'w-5 h-5 text-[9px]')}${isMe(r.by) ? 'You' : esc(r.by)} · ${ago(r.date)}</div>
+          ${r.status === 'fulfilled'
+            ? `<div class="text-xs text-emerald-700 font-medium">Listed by ${isMe(r.fulfilledBy) ? 'you' : esc(r.fulfilledBy)} 🎉</div>`
+            : isMe(r.by)
+              ? `<button data-action="closeReq" data-req="${r.id}" class="${btn} border border-slate-200 hover:border-slate-400">Close request</button>`
+              : `<button data-action="haveIt" data-req="${r.id}" class="${btn} bg-amber-500 hover:bg-amber-600 text-white font-semibold"><i data-lucide="heart-handshake" class="w-4 h-4"></i>I have one</button>`}
+        </div>`).join('') || '<div class="text-sm text-slate-500 py-6">Nothing requested right now. Everyone has what they need!</div>'}
+    </div>`;
 }
 
 function renderImpact() {
   const sum = (list, k) => list.reduce((s, l) => s + meta(l.category)[k], 0);
   const byOwner = {}, byTool = {};
   for (const l of loans) {
-    if (l.owner) (byOwner[l.owner] ??= { name: l.owner, n: 0, saved: 0 }), byOwner[l.owner].n++, byOwner[l.owner].saved += meta(l.category).value;
+    if (l.owner) { const o = (byOwner[l.owner] ??= { name: l.owner, n: 0, saved: 0 }); o.n++; o.saved += meta(l.category).value; }
     (byTool[l.toolId] ??= { id: l.toolId, name: l.tool, n: 0 }).n++;
   }
   const sharers = Object.values(byOwner).sort((a, b) => b.n - a.n).slice(0, 5);
   const popular = Object.values(byTool).sort((a, b) => b.n - a.n).slice(0, 5);
+  const people = [...new Set([...allAccounts().map(a => a.name), ...loans.map(l => l.borrower)])]
+    .map(name => ({ name, t: trust(name) })).filter(p => p.t.done >= 2)
+    .sort((a, b) => b.t.rate - a.t.rate || b.t.done - a.t.done).slice(0, 5);
   const medal = i => ['🥇', '🥈', '🥉'][i] || `<span class="text-slate-400 text-sm">#${i + 1}</span>`;
   const mine = user ? loans.filter(l => isMe(l.borrower)) : [];
   const lent = user ? loans.filter(l => isMe(l.owner)) : [];
@@ -554,9 +844,14 @@ function renderImpact() {
       <div class="text-2xl font-bold">${value}</div>
       <div class="text-xs text-emerald-100 flex items-center gap-1"><i data-lucide="${icon}" class="w-3.5 h-3.5"></i>${label}</div>
     </div>`;
+  const card = (icon, color, title, body) => `
+    <div class="bg-white rounded-2xl border border-slate-200 p-5">
+      <div class="font-semibold mb-3 flex items-center gap-2"><i data-lucide="${icon}" class="w-4 h-4 ${color}"></i>${title}</div>
+      <ol class="space-y-3">${body || '<li class="text-sm text-slate-500">No loans yet.</li>'}</ol>
+    </div>`;
   $('impact').innerHTML = `
     <h2 class="text-xl font-bold mb-4 flex items-center gap-2"><i data-lucide="leaf" class="w-5 h-5 text-emerald-600"></i>Community impact</h2>
-    <div class="grid lg:grid-cols-3 gap-4">
+    <div class="grid md:grid-cols-2 gap-4">
       <div class="bg-gradient-to-br from-emerald-700 to-teal-700 text-white rounded-2xl p-5 flex flex-col">
         <div class="grid grid-cols-2 gap-3">
           ${tile(loans.length, 'loans made', 'repeat')}
@@ -569,70 +864,28 @@ function renderImpact() {
         </div>` : ''}
         <div class="mt-auto pt-4 text-[11px] text-emerald-100/80">Estimates: each loan counts as one new tool not bought, using typical retail prices and manufacturing footprints.</div>
       </div>
-      <div class="bg-white rounded-2xl border border-slate-200 p-5">
-        <div class="font-semibold mb-3 flex items-center gap-2"><i data-lucide="trophy" class="w-4 h-4 text-amber-500"></i>Top sharers</div>
-        <ol class="space-y-3">${sharers.map((o, i) => `
-          <li class="flex items-center gap-3">
-            <span class="w-6 text-center">${medal(i)}</span>${avatar(o.name)}
-            <span class="flex-1 min-w-0"><span class="block font-medium truncate">${isMe(o.name) ? 'You' : esc(o.name)}</span>
-            <span class="block text-xs text-slate-500">lent ${o.n}× · saved neighbors ${money(o.saved)}</span></span>
-          </li>`).join('') || '<li class="text-sm text-slate-500">No loans yet.</li>'}</ol>
-      </div>
-      <div class="bg-white rounded-2xl border border-slate-200 p-5">
-        <div class="font-semibold mb-3 flex items-center gap-2"><i data-lucide="flame" class="w-4 h-4 text-rose-500"></i>Most borrowed</div>
-        <ol class="space-y-3">${popular.map(p => {
-          const t = tools.find(t => t.id === p.id) || { name: p.name, category: '', photo: '' };
-          return `
-          <li><button data-id="${p.id}" class="w-full flex items-center gap-3 text-left hover:bg-slate-50 rounded-xl -m-1 p-1">
-            <span class="w-10 h-10 rounded-lg overflow-hidden shrink-0">${photoHTML(t, 'w-5 h-5')}</span>
-            <span class="flex-1 min-w-0 font-medium truncate">${esc(t.name)}</span>
-            <span class="text-sm text-slate-500 shrink-0">${p.n} loans</span>
-          </button></li>`; }).join('') || '<li class="text-sm text-slate-500">No loans yet.</li>'}</ol>
-      </div>
+      ${card('trophy', 'text-amber-500', 'Top sharers', sharers.map((o, i) => `
+        <li class="flex items-center gap-3">
+          <span class="w-6 text-center">${medal(i)}</span>${avatar(o.name)}
+          <span class="flex-1 min-w-0"><span class="block font-medium truncate">${isMe(o.name) ? 'You' : esc(o.name)}</span>
+          <span class="block text-xs text-slate-500">lent ${o.n}× · saved neighbors ${money(o.saved)}</span></span>
+        </li>`).join(''))}
+      ${card('flame', 'text-rose-500', 'Most borrowed', popular.map(p => {
+        const t = toolById(p.id) || { name: p.name, category: '', photo: '' };
+        return `
+        <li><button data-id="${p.id}" class="w-full flex items-center gap-3 text-left hover:bg-slate-50 rounded-xl -m-1 p-1">
+          <span class="w-10 h-10 rounded-lg overflow-hidden shrink-0">${photoHTML(t, 'w-5 h-5')}</span>
+          <span class="flex-1 min-w-0 font-medium truncate">${esc(t.name)}</span>
+          <span class="text-sm text-slate-500 shrink-0">${p.n} loans</span>
+        </button></li>`; }).join(''))}
+      ${card('shield-check', 'text-emerald-600', 'Most reliable borrowers', people.map(p => `
+        <li class="flex items-center gap-3">
+          ${avatar(p.name)}
+          <span class="flex-1 min-w-0"><span class="block font-medium truncate">${isMe(p.name) ? 'You' : esc(p.name)}</span>
+          <span class="block text-xs text-slate-500">${esc(p.t.detail)}</span></span>
+          ${trustBadge(p.name)}
+        </li>`).join(''))}
     </div>`;
-}
-
-function renderFilters() {
-  const cats = [...(user ? ['Mine'] : []), 'All', ...new Set(tools.map(t => t.category))];
-  $('filters').innerHTML = cats.map(c => `
-    <button data-cat="${esc(c)}" class="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border ${c === activeCategory ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 hover:border-slate-400'}">${c === 'Mine' ? '<i data-lucide="user" class="w-4 h-4"></i>My stuff' : esc(c)}</button>`).join('');
-}
-
-function badgeHTML(t) {
-  const pill = (bg, dot, label) => `<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full shadow-sm ${bg}"><span class="w-1.5 h-1.5 rounded-full ${dot}"></span>${label}</span>`;
-  const held = heldFor(t);
-  if (held) return isMe(held)
-    ? pill('bg-violet-100 text-violet-700', 'bg-violet-500', 'Held for you')
-    : pill('bg-violet-100 text-violet-700', 'bg-violet-500', `Held for ${esc(firstName(held))}`);
-  if (t.status === 'Available') return pill('bg-emerald-100 text-emerald-700', 'bg-emerald-500', 'Available');
-  if (isOverdue(t)) return pill('bg-red-100 text-red-700', 'bg-red-500', 'Overdue');
-  return pill('bg-amber-100 text-amber-700', 'bg-amber-500', 'Checked Out');
-}
-
-function cardHTML(t) {
-  const avail = t.status === 'Available';
-  const overdue = isOverdue(t);
-  const mine = user && sameName(t.borrower, user.name);
-  const held = heldFor(t);
-  const footer = held && !isMe(held)
-    ? `<span class="text-violet-700 font-medium inline-flex items-center gap-1"><i data-lucide="users" class="w-4 h-4"></i>Join the line</span>`
-    : avail
-    ? `<span class="text-emerald-700 font-medium inline-flex items-center gap-1">${held ? 'Your turn' : 'Borrow'} <i data-lucide="arrow-right" class="w-4 h-4"></i></span>`
-    : `<span class="inline-flex items-center gap-1.5 text-slate-600 min-w-0"><i data-lucide="user" class="w-4 h-4 shrink-0"></i><span class="truncate">${mine ? 'You' : esc(t.borrower)}</span></span>
-       <span class="shrink-0 ${overdue ? 'text-red-600 font-medium' : 'text-slate-500'}">${t.due ? fmtDate(t.due) : ''}</span>`;
-  return `
-    <button data-id="${t.id}" class="card-enter ${t.id === flashId ? 'flash' : ''} group text-left bg-white rounded-2xl border ${overdue ? 'border-red-200' : 'border-slate-200'} overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition focus:outline-none focus:ring-2 focus:ring-emerald-500 flex flex-col">
-      <div class="relative aspect-square w-full overflow-hidden ${avail ? '' : 'grayscale-[40%]'}">
-        ${photoHTML(t)}
-        <div class="absolute top-2 left-2">${badgeHTML(t)}</div>
-        ${t.waitlist.length ? `<div class="absolute bottom-2 right-2 inline-flex items-center gap-1 text-xs font-medium bg-white/90 text-slate-700 px-2 py-1 rounded-full shadow-sm"><i data-lucide="users" class="w-3.5 h-3.5"></i>${t.waitlist.length} waiting</div>` : ''}
-      </div>
-      <div class="p-3 sm:p-4 flex-1 flex flex-col">
-        <div class="font-semibold leading-snug truncate">${esc(t.name)}</div>
-        <div class="text-xs sm:text-sm text-slate-500 truncate">${esc(t.category)}${t.owner ? ' · ' + esc(sameName(t.owner, user?.name) ? 'yours' : t.owner.split(' ')[0] + "'s") : ''}</div>
-        <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 text-xs sm:text-sm mt-auto">${footer}</div>
-      </div>
-    </button>`;
 }
 
 function render() {
@@ -642,57 +895,105 @@ function render() {
   const q = query.trim().toLowerCase();
   const list = tools
     .filter(t => activeCategory === 'All'
-      || (activeCategory === 'Mine' ? user && (isMe(t.borrower) || isMe(t.owner) || t.waitlist.some(isMe)) : t.category === activeCategory))
+      || (activeCategory === 'Mine'
+        ? user && (isMe(t.borrower) || isMe(t.owner) || t.waitlist.some(isMe) || t.reservations.some(r => isMe(r.name)))
+        : t.category === activeCategory))
     .filter(t => !q || [t.name, t.category, t.borrower, t.owner].some(s => s.toLowerCase().includes(q)))
     .sort((a, b) => (a.status === b.status ? a.id - b.id : a.status === 'Available' ? -1 : 1));
   $('grid').innerHTML = list.map(cardHTML).join('');
   $('empty').classList.toggle('hidden', list.length > 0);
   $('emptyText').textContent = activeCategory === 'Mine' && !q
-    ? "You haven't borrowed or shared anything yet."
+    ? "You haven't borrowed, booked or shared anything yet."
     : 'No tools match your search.';
+  $('emptyAsk').innerHTML = q
+    ? `<button data-action="ask" data-q="${esc(query.trim())}" class="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><i data-lucide="megaphone" class="w-4 h-4"></i>Ask the street for “${esc(query.trim())}”</button>`
+    : '';
+  renderRequests();
   renderImpact();
   lucide.createIcons();
   flashId = null;
 }
 
 // ─── Modals ────────────────────────────────────────────────────────────────
-function openModal(html, focus = true) {
+function openModal(html, focus = true, width = 'max-w-md') {
+  $('modalCard').className = `bg-white rounded-2xl w-full ${width} shadow-xl card-enter max-h-[90vh] overflow-y-auto`;
   $('modalBody').innerHTML = html;
   $('modal').classList.remove('hidden');
   lucide.createIcons();
-  if (focus) $('modalBody').querySelector('input:not([type=file]):not([type=date])')?.focus();
+  if (focus) $('modalBody').querySelector('input:not([type=file]):not([type=date]):not([type=radio])')?.focus();
 }
 function closeModal() { $('modal').classList.add('hidden'); }
 
 function modalHero(t) {
   const m = meta(t.category);
-  const isOwner = user && sameName(t.owner, user.name);
+  const owner = isMe(t.owner);
   return `
-    <div class="relative aspect-[4/3] w-full overflow-hidden" id="heroPhoto">
+    <div class="relative aspect-[4/3] w-full overflow-hidden rounded-t-2xl">
       ${photoHTML(t, 'w-16 h-16')}
       <button data-close class="absolute top-3 right-3 w-8 h-8 grid place-items-center rounded-full bg-white/90 text-slate-600 hover:text-slate-900 shadow"><i data-lucide="x" class="w-4 h-4"></i></button>
       <div class="absolute top-3 left-3">${badgeHTML(t)}</div>
       ${PHOTO_CREDITS[t.photo] ? `
         <a href="${esc(PHOTO_CREDITS[t.photo].url)}" target="_blank" rel="noopener" class="absolute bottom-2 left-2 max-w-[60%] truncate text-[10px] text-white/90 bg-black/40 hover:bg-black/60 px-2 py-0.5 rounded-full">
           Photo: ${esc(PHOTO_CREDITS[t.photo].author)} · ${esc(PHOTO_CREDITS[t.photo].license)}</a>` : ''}
-      ${isOwner ? `
+      ${owner ? `
         <label class="absolute bottom-3 right-3 inline-flex items-center gap-1.5 bg-white/90 hover:bg-white text-slate-800 text-xs font-medium px-3 py-1.5 rounded-full shadow cursor-pointer">
           <i data-lucide="camera" class="w-4 h-4"></i>${t.photo ? 'Change photo' : 'Add photo'}
           <input id="ownerPhoto" type="file" accept="image/*" class="hidden" />
         </label>` : ''}
     </div>
-    <div class="p-6 pb-0">
+    <div class="px-6 pt-5">
       <div class="font-semibold text-xl">${esc(t.name)}</div>
       <div class="text-sm text-slate-500">${esc(t.category)} · saves ~$${m.value} vs buying</div>
-      ${t.owner ? `<div class="mt-3 flex items-center gap-2 text-sm">${avatar(t.owner, 'w-6 h-6 text-[10px]')}<span>Shared by <b>${isOwner ? 'you' : esc(t.owner)}</b></span></div>` : ''}
+      ${t.owner ? `<div class="mt-3 flex items-center gap-2 text-sm flex-wrap">${avatar(t.owner, 'w-6 h-6 text-[10px]')}<span>Shared by <b>${owner ? 'you' : esc(t.owner)}</b></span></div>` : ''}
     </div>`;
+}
+
+function section(icon, color, title, body, id = '') {
+  return `
+    <div ${id ? `id="${id}"` : ''} class="rounded-xl border border-slate-200 p-4 space-y-3">
+      <div class="text-sm font-semibold flex items-center gap-2"><i data-lucide="${icon}" class="w-4 h-4 ${color}"></i>${title}</div>
+      ${body}
+    </div>`;
+}
+
+function conditionHTML(t) {
+  if (t.condition === 'Good') return '';
+  const broken = isBroken(t);
+  return `
+    <div class="rounded-xl ${broken ? 'bg-slate-100 text-slate-800' : 'bg-amber-50 text-amber-900'} p-4 text-sm space-y-2">
+      <div class="font-semibold flex items-center gap-2"><i data-lucide="${broken ? 'circle-alert' : 'wrench'}" class="w-4 h-4"></i>${broken ? 'Out for repair' : 'Needs attention'}</div>
+      ${t.conditionNote ? `<div>“${esc(t.conditionNote)}”</div>` : ''}
+      ${isMe(t.owner) ? `<button data-action="fixed" data-tool="${t.id}" class="w-full bg-white border border-slate-200 hover:border-slate-400 font-medium py-2 rounded-lg inline-flex items-center justify-center gap-1.5"><i data-lucide="check" class="w-4 h-4"></i>Mark as fixed</button>` : ''}
+    </div>`;
+}
+
+function borrowHTML(t, held) {
+  const btn = 'w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl inline-flex items-center justify-center gap-2';
+  if (!user) return `<form id="checkoutForm"><button class="${btn}"><i data-lucide="log-in" class="w-5 h-5"></i>Sign in to borrow</button></form>`;
+  if (isMe(t.owner)) return `<div class="text-sm text-slate-500 text-center">This is yours. Neighbors can borrow it while it's available.</div>`;
+  const myRes = activeRes(t) && isMe(activeRes(t).name) ? activeRes(t) : null;
+  const next = nextResFor(t, user.name);
+  const max = next ? shiftISO(next.start, -1) : '';
+  let due = myRes ? myRes.end : addDays(LOAN_DAYS);
+  if (max && due > max) due = max;
+  return `
+    <form id="checkoutForm" class="space-y-3">
+      ${held ? `<div class="rounded-xl bg-violet-50 text-violet-800 p-3 text-sm">🎉 It's your turn, this one is ${myRes ? 'booked' : 'held'} for you.</div>` : ''}
+      <div class="flex items-center gap-2 text-sm text-slate-600">${avatar(user.name, 'w-6 h-6 text-[10px]')}Borrowing as <b>${esc(user.name)}</b></div>
+      <label class="block">
+        <span class="text-sm font-medium">Return by</span>
+        <input name="due" type="date" required min="${todayISO()}" ${max ? `max="${max}"` : ''} value="${due}" class="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+      </label>
+      ${next ? `<div class="text-xs text-violet-700 flex items-center gap-1.5"><i data-lucide="calendar-days" class="w-3.5 h-3.5"></i>${esc(firstName(next.name))} booked it from ${fmtDay(next.start)}, so it's due back by ${fmtDate(max)}.</div>` : ''}
+      <button class="${btn}"><i data-lucide="hand-helping" class="w-5 h-5"></i>Borrow</button>
+    </form>`;
 }
 
 function waitlistHTML(t) {
   const pos = t.waitlist.findIndex(isMe);
   const list = t.waitlist.length
     ? `<ol class="space-y-2">${t.waitlist.map((n, i) => `
-        <li class="flex items-center gap-2 text-sm"><span class="w-5 text-slate-400">${i + 1}.</span>${avatar(n, 'w-6 h-6 text-[10px]')}<span class="${isMe(n) ? 'font-semibold' : ''}">${isMe(n) ? 'You' : esc(n)}</span></li>`).join('')}</ol>`
+        <li class="flex items-center gap-2 text-sm flex-wrap"><span class="w-5 text-slate-400">${i + 1}.</span>${avatar(n, 'w-6 h-6 text-[10px]')}<span class="${isMe(n) ? 'font-semibold' : ''}">${isMe(n) ? 'You' : esc(n)}</span>${trustBadge(n)}</li>`).join('')}</ol>`
     : '<div class="text-sm text-slate-500">Nobody waiting yet.</div>';
   let btn = '';
   if (!isMe(t.borrower) && !isMe(t.owner)) {
@@ -700,29 +1001,90 @@ function waitlistHTML(t) {
       ? `<button data-action="leave" data-tool="${t.id}" class="w-full border border-slate-200 hover:border-slate-400 text-sm font-medium py-2.5 rounded-xl">Leave the line (you're #${pos + 1})</button>`
       : `<button data-action="join" data-tool="${t.id}" class="w-full bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold py-2.5 rounded-xl inline-flex items-center justify-center gap-2"><i data-lucide="user-plus" class="w-4 h-4"></i>${user ? 'Join the line' : 'Sign in to join the line'}</button>`;
   }
-  return `
-    <div class="rounded-xl border border-slate-200 p-4 space-y-3">
-      <div class="text-sm font-semibold flex items-center gap-2"><i data-lucide="users" class="w-4 h-4 text-violet-600"></i>Waitlist${t.waitlist.length ? ` · ${t.waitlist.length}` : ''}</div>
-      ${list}${btn}
-    </div>`;
+  return section('users', 'text-violet-600', `Waitlist${t.waitlist.length ? ` · ${t.waitlist.length}` : ''}`, list + btn, 'waitlistBox');
 }
 
 // Prefilled WhatsApp / SMS links; nothing is sent until the user hits send in their app.
-function nudgeHTML(to, text, label) {
+function nudgeHTML(to, text, label, id = 'nudgeBox') {
   const phone = (accountFor(to)?.phone || '').replace(/[^\d+]/g, '');
   const enc = encodeURIComponent(text);
   const wa = `https://wa.me/${phone.replace('+', '')}?text=${enc}`;
   const sms = `sms:${phone}?&body=${enc}`;
-  return `
-    <div class="rounded-xl border border-slate-200 p-4 space-y-3">
-      <div class="text-sm font-semibold flex items-center gap-2"><i data-lucide="bell-ring" class="w-4 h-4 text-amber-500"></i>${label}</div>
+  return section('bell-ring', 'text-amber-500', label, `
       <div class="text-sm text-slate-600 bg-slate-50 rounded-lg p-3">${esc(text)}</div>
       <div class="grid grid-cols-3 gap-2 text-sm font-medium">
         <a href="${esc(wa)}" target="_blank" rel="noopener" class="inline-flex items-center justify-center gap-1.5 bg-[#25D366] hover:brightness-95 text-white py-2 rounded-lg"><i data-lucide="message-circle" class="w-4 h-4"></i>WhatsApp</a>
         <a href="${esc(sms)}" class="inline-flex items-center justify-center gap-1.5 bg-sky-600 hover:bg-sky-700 text-white py-2 rounded-lg"><i data-lucide="smartphone" class="w-4 h-4"></i>SMS</a>
         <button data-action="copy" data-text="${esc(text)}" class="inline-flex items-center justify-center gap-1.5 border border-slate-200 hover:border-slate-400 py-2 rounded-lg"><i data-lucide="copy" class="w-4 h-4"></i>Copy</button>
+      </div>`, id);
+}
+
+// Two-week availability strip plus the booking form.
+function calendarHTML(t) {
+  const today = todayISO();
+  const cells = [...Array(14)].map((_, i) => {
+    const d = addDays(i);
+    const out = t.status === 'Checked Out' && (d <= t.due || (isOverdue(t) && d === today));
+    const res = t.reservations.find(r => r.start <= d && d <= r.end);
+    const dt = new Date(d + 'T00:00:00');
+    const label = `<span class="block text-[10px] uppercase opacity-70">${dt.toLocaleDateString(undefined, { weekday: 'narrow' })}</span><span class="block font-semibold">${dt.getDate()}</span>`;
+    if (out) return `<div title="Out with ${esc(t.borrower)}" class="rounded-lg py-1.5 text-center text-xs ${isOverdue(t) ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}">${label}</div>`;
+    if (res) return `<div title="Booked by ${esc(res.name)}" class="rounded-lg py-1.5 text-center text-xs ${isMe(res.name) ? 'bg-violet-600 text-white' : 'bg-violet-100 text-violet-700'}">${label}</div>`;
+    return `<button type="button" data-action="day" data-day="${d}" title="Free" class="rounded-lg py-1.5 text-center text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100 ${isBroken(t) ? 'opacity-50' : ''}">${label}</button>`;
+  }).join('');
+  const bookings = t.reservations.map(r => `
+    <li class="flex items-center gap-2 text-sm">
+      ${avatar(r.name, 'w-6 h-6 text-[10px]')}
+      <span class="flex-1 min-w-0 truncate"><b>${isMe(r.name) ? 'You' : esc(firstName(r.name))}</b> · ${fmtDate(r.start)}${r.end !== r.start ? `–${fmtDate(r.end)}` : ''}</span>
+      ${isMe(r.name) || isMe(t.owner) ? `<button data-action="unres" data-tool="${t.id}" data-name="${esc(r.name)}" data-start="${r.start}" class="text-xs text-slate-500 hover:text-red-600 underline">Cancel</button>` : ''}
+    </li>`).join('');
+  const canBook = user && !isMe(t.owner) && !isBroken(t);
+  const input = 'mt-1 w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm';
+  const form = !user
+    ? `<button data-action="bookLogin" data-tool="${t.id}" class="w-full border border-slate-200 hover:border-slate-400 text-sm font-medium py-2.5 rounded-xl">Sign in to book dates</button>`
+    : canBook ? `
+      <form id="resForm" class="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
+        <label class="text-xs font-medium">From<input id="resStart" name="start" type="date" min="${today}" required class="${input}" /></label>
+        <label class="text-xs font-medium">To<input id="resEnd" name="end" type="date" min="${today}" required class="${input}" /></label>
+        <button class="bg-slate-900 hover:bg-slate-700 text-white text-sm font-semibold px-4 py-2 rounded-xl">Book</button>
+      </form>
+      <div class="text-[11px] text-slate-500">Tip: tap a green day to start, then a later one to set the end.</div>` : '';
+  return section('calendar-days', 'text-sky-600', 'Availability · next 2 weeks', `
+      <div class="grid grid-cols-7 gap-1">${cells}</div>
+      <div class="flex flex-wrap gap-3 text-[11px] text-slate-500">
+        <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-emerald-100"></span>Free</span>
+        <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-amber-100"></span>Borrowed</span>
+        <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-violet-100"></span>Booked</span>
       </div>
-    </div>`;
+      ${bookings ? `<ul class="space-y-2">${bookings}</ul>` : ''}
+      ${form}`, 'calendarBox');
+}
+
+function historyHTML(t) {
+  const list = loans.filter(l => l.toolId === t.id).slice(-5).reverse();
+  if (!list.length) return '';
+  const tone = { 'Needs attention': 'bg-amber-100 text-amber-800', Broken: 'bg-red-100 text-red-700' };
+  return `
+    <details class="rounded-xl border border-slate-200 p-4 group">
+      <summary class="text-sm font-semibold flex items-center gap-2 cursor-pointer">
+        <i data-lucide="history" class="w-4 h-4 text-slate-500"></i>Loan history · ${loans.filter(l => l.toolId === t.id).length}
+        <i data-lucide="chevron-down" class="w-4 h-4 ml-auto text-slate-400 group-open:rotate-180 transition"></i>
+      </summary>
+      <ul class="mt-3 space-y-3">${list.map(l => {
+        const late = l.returned && l.due && l.returned > l.due ? daysBetween(l.due, l.returned) : 0;
+        return `
+        <li class="flex gap-2 text-sm">
+          ${avatar(l.borrower, 'w-6 h-6 text-[10px]')}
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap"><b>${isMe(l.borrower) ? 'You' : esc(l.borrower)}</b>
+              <span class="text-slate-500">${fmtDate(l.date)} → ${l.returned ? fmtDate(l.returned) : 'now'}</span>
+              ${!l.returned ? '<span class="text-xs text-amber-700">out</span>' : late ? `<span class="text-xs text-red-600">${late}d late</span>` : '<span class="text-xs text-emerald-700">on time</span>'}
+              ${tone[l.condition] ? `<span class="text-[11px] px-1.5 py-0.5 rounded-full ${tone[l.condition]}">${esc(l.condition)}</span>` : ''}
+            </div>
+            ${l.note ? `<div class="text-slate-500 text-xs mt-0.5">“${esc(l.note)}”</div>` : ''}
+          </div>
+        </li>`; }).join('')}</ul>
+    </details>`;
 }
 
 function wireOwnerPhoto(id) {
@@ -737,64 +1099,92 @@ function wireOwnerPhoto(id) {
 }
 
 function openTool(id) {
-  const t = tools.find(t => t.id === id);
+  const t = toolById(id);
   if (!t) return;
   const held = heldFor(t);
-  if (held && !isMe(held)) {
-    openModal(`${modalHero(t)}
-      <div class="p-6 space-y-4">
-        <div class="rounded-xl bg-violet-50 text-violet-800 p-4 text-sm">
-          Just returned and held for <b>${esc(held)}</b>, who's first in line.
-        </div>
-        ${waitlistHTML(t)}
-        ${isMe(t.owner) ? `<button data-action="release" data-tool="${t.id}" class="w-full text-sm text-slate-500 hover:text-slate-800 underline">Release hold (skip ${esc(firstName(held))})</button>` : ''}
-      </div>`, false);
-  } else if (t.status === 'Available') {
-    openModal(`${modalHero(t)}
-      <form id="checkoutForm" class="p-6 space-y-4">
-        ${held ? `<div class="rounded-xl bg-violet-50 text-violet-800 p-3 text-sm">🎉 It's your turn, this one was held for you.</div>` : ''}
-        ${user
-          ? `<div class="flex items-center gap-2 text-sm text-slate-600">${avatar(user.name, 'w-6 h-6 text-[10px]')}Borrowing as <b>${esc(user.name)}</b></div>
-             <label class="block">
-               <span class="text-sm font-medium">Return by</span>
-               <input name="due" type="date" required min="${todayISO()}" value="${addDays(LOAN_DAYS)}" class="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-             </label>`
-          : `<div class="text-sm text-slate-600">Sign in with your demo account to borrow this.</div>`}
-        <button class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl inline-flex items-center justify-center gap-2">
-          <i data-lucide="${user ? 'hand-helping' : 'log-in'}" class="w-5 h-5"></i>${user ? 'Borrow' : 'Sign in to borrow'}
-        </button>
-      </form>`, false);
-    $('checkoutForm').onsubmit = e => {
-      e.preventDefault();
-      if (!user) return requireUser(() => openTool(id));
-      checkout(id, new FormData(e.target).get('due'));
-    };
-  } else {
-    const overdue = isOverdue(t);
-    const canReturn = user && (sameName(t.borrower, user.name) || sameName(t.owner, user.name));
-    const who = isMe(t.borrower) ? 'you' : esc(t.borrower);
-    const canNudge = overdue && user && !isMe(t.borrower) && (isMe(t.owner) || t.waitlist.some(isMe));
-    const nudgeMsg = `Hi ${firstName(t.borrower)}! Friendly reminder from BorrowBloc: ${isMe(t.owner) ? 'my' : 'the'} ${t.name}${t.owner && !isMe(t.owner) ? ` (${firstName(t.owner)}'s)` : ''} was due back ${fmtDate(t.due)}.${t.waitlist.length ? ` ${t.waitlist.length} ${t.waitlist.length === 1 ? 'neighbor is' : 'neighbors are'} waiting for it.` : ''} Could you drop it back when you get a chance? Thanks!`;
-    openModal(`${modalHero(t)}
-      <div class="p-6 space-y-4">
-        <div class="rounded-xl ${overdue ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-800'} p-4 text-sm">
-          Borrowed by <b>${who}</b>${t.due ? `, ${overdue ? 'was due' : 'due back'} <b>${fmtDate(t.due)}</b>` : ''}.
-        </div>
-        ${canReturn
-          ? `<button id="returnBtn" class="w-full bg-slate-900 hover:bg-slate-700 text-white font-semibold py-3 rounded-xl inline-flex items-center justify-center gap-2"><i data-lucide="undo-2" class="w-5 h-5"></i>Return tool</button>`
-          : user
-            ? `<div class="text-sm text-slate-500 text-center">Only ${esc(t.borrower)}${t.owner ? ` or ${esc(t.owner)}` : ''} can mark this returned.</div>`
-            : `<button id="returnLogin" class="w-full border border-slate-200 hover:border-slate-400 font-semibold py-3 rounded-xl inline-flex items-center justify-center gap-2"><i data-lucide="log-in" class="w-5 h-5"></i>Sign in to return</button>`}
-        ${canNudge ? nudgeHTML(t.borrower, nudgeMsg, `Nudge ${esc(firstName(t.borrower))}`) : ''}
-        ${waitlistHTML(t)}
-      </div>`, false);
-    if ($('returnBtn')) $('returnBtn').onclick = () => giveBack(id);
-    if ($('returnLogin')) $('returnLogin').onclick = () => requireUser(() => openTool(id));
+  const res = activeRes(t);
+  const overdue = isOverdue(t);
+  const parts = [conditionHTML(t)];
+
+  if (t.status === 'Checked Out') {
+    const canReturn = user && (isMe(t.borrower) || isMe(t.owner));
+    parts.push(`
+      <div id="loanStatus" class="rounded-xl ${overdue ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-800'} p-4 text-sm space-y-1">
+        <div class="flex items-center gap-2 flex-wrap">${avatar(t.borrower, 'w-6 h-6 text-[10px]')}<span>Borrowed by <b>${isMe(t.borrower) ? 'you' : esc(t.borrower)}</b></span>${trustBadge(t.borrower)}</div>
+        ${t.due ? `<div>${overdue ? `Was due <b>${fmtDate(t.due)}</b>, ${daysBetween(t.due, todayISO())} days ago.` : `Due back <b>${fmtDay(t.due)}</b>.`}</div>` : ''}
+      </div>`);
+    parts.push(canReturn
+      ? `<button id="returnBtn" class="w-full bg-slate-900 hover:bg-slate-700 text-white font-semibold py-3 rounded-xl inline-flex items-center justify-center gap-2"><i data-lucide="undo-2" class="w-5 h-5"></i>Return tool</button>`
+      : user
+        ? `<div class="text-sm text-slate-500 text-center">Only ${esc(t.borrower)}${t.owner ? ` or ${esc(t.owner)}` : ''} can mark this returned.</div>`
+        : `<button id="returnLogin" class="w-full border border-slate-200 hover:border-slate-400 font-semibold py-3 rounded-xl inline-flex items-center justify-center gap-2"><i data-lucide="log-in" class="w-5 h-5"></i>Sign in to return</button>`);
+    if (overdue && user && !isMe(t.borrower) && (isMe(t.owner) || t.waitlist.some(isMe))) {
+      parts.push(nudgeHTML(t.borrower,
+        `Hi ${firstName(t.borrower)}! Friendly reminder from BorrowBloc: ${isMe(t.owner) ? 'my' : 'the'} ${t.name}${t.owner && !isMe(t.owner) ? ` (${firstName(t.owner)}'s)` : ''} was due back ${fmtDate(t.due)}.${t.waitlist.length ? ` ${t.waitlist.length} ${t.waitlist.length === 1 ? 'neighbor is' : 'neighbors are'} waiting for it.` : ''} Could you drop it back when you get a chance? Thanks!`,
+        `Nudge ${esc(firstName(t.borrower))}`));
+    }
+    parts.push(waitlistHTML(t));
+  } else if (!isBroken(t)) {
+    if (held && !isMe(held)) {
+      parts.push(`<div id="loanStatus" class="rounded-xl bg-violet-50 text-violet-800 p-4 text-sm">${res
+        ? `Booked by <b>${esc(held)}</b> ${res.end > todayISO() ? `through ${fmtDay(res.end)}` : 'for today'}.`
+        : `Just returned and held for <b>${esc(held)}</b>, who's first in line.`}</div>`);
+      if (!res) {
+        parts.push(waitlistHTML(t));
+        if (isMe(t.owner)) parts.push(`<button data-action="release" data-tool="${t.id}" class="w-full text-sm text-slate-500 hover:text-slate-800 underline">Release hold (skip ${esc(firstName(held))})</button>`);
+      }
+    } else {
+      parts.push(borrowHTML(t, held));
+    }
   }
+  parts.push(calendarHTML(t), historyHTML(t));
+  openModal(`${modalHero(t)}<div class="p-6 pt-4 space-y-4">${parts.join('')}</div>`, false);
+
+  if ($('checkoutForm')) $('checkoutForm').onsubmit = e => {
+    e.preventDefault();
+    if (!user) return requireUser(() => openTool(id));
+    checkout(id, new FormData(e.target).get('due'));
+  };
+  if ($('returnBtn')) $('returnBtn').onclick = () => openReturn(id);
+  if ($('returnLogin')) $('returnLogin').onclick = () => requireUser(() => openTool(id));
+  if ($('resForm')) $('resForm').onsubmit = e => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    reserve(id, f.get('start'), f.get('end'));
+  };
   wireOwnerPhoto(id);
 }
 
-function openAdd() {
+function openReturn(id) {
+  const t = toolById(id);
+  const opts = [['Good', 'thumbs-up', 'emerald'], ['Needs attention', 'wrench', 'amber'], ['Broken', 'circle-alert', 'red']];
+  openModal(`
+    <div class="p-6 space-y-4">
+      <div class="flex items-start justify-between">
+        <div><div class="font-semibold text-lg">Return the ${esc(t.name)}</div><div class="text-sm text-slate-500">A quick check keeps the library in good shape.</div></div>
+        <button data-close class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <form id="returnForm" class="space-y-4">
+        <div class="text-sm font-medium">How's it looking?</div>
+        <div class="grid grid-cols-3 gap-2">${opts.map(([v, icon, c], i) => `
+          <label class="cursor-pointer">
+            <input type="radio" name="condition" value="${v}" class="peer sr-only" ${i === 0 ? 'checked' : ''} />
+            <span class="flex flex-col items-center gap-1 p-3 rounded-xl border-2 border-slate-200 text-sm text-center peer-checked:border-${c}-500 peer-checked:bg-${c}-50">
+              <i data-lucide="${icon}" class="w-5 h-5 text-${c}-600"></i>${v}</span>
+          </label>`).join('')}</div>
+        <textarea name="note" rows="2" maxlength="140" placeholder="Anything the owner should know? (optional)" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"></textarea>
+        <button class="w-full bg-slate-900 hover:bg-slate-700 text-white font-semibold py-3 rounded-xl inline-flex items-center justify-center gap-2"><i data-lucide="undo-2" class="w-5 h-5"></i>Confirm return</button>
+      </form>
+    </div>`, false);
+  $('returnForm').onsubmit = e => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    giveBack(id, f.get('condition'), f.get('note').trim());
+  };
+}
+
+function openAdd({ name = '', requestId = null } = {}) {
+  const req = requests.find(r => r.id === requestId);
   const opts = [...new Set([...Object.keys(CATEGORY_META), ...tools.map(t => t.category)])]
     .map(c => `<option>${esc(c)}</option>`).join('');
   openModal(`
@@ -803,6 +1193,7 @@ function openAdd() {
       <button data-close class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
     </div>
     <form id="addForm" class="p-6 space-y-4">
+      ${req ? `<div class="rounded-xl bg-amber-50 text-amber-900 p-3 text-sm flex items-center gap-2">${avatar(req.by, 'w-6 h-6 text-[10px]')}<span>Answering <b>${esc(firstName(req.by))}</b>'s request 🙌</span></div>` : ''}
       <label class="block cursor-pointer">
         <span class="text-sm font-medium">Photo</span>
         <div id="addPreview" class="mt-1 aspect-[4/3] rounded-xl border-2 border-dashed border-slate-200 hover:border-emerald-500 overflow-hidden grid place-items-center text-slate-400 text-sm">
@@ -811,7 +1202,7 @@ function openAdd() {
         <input id="addPhoto" type="file" accept="image/*" class="hidden" />
       </label>
       <label class="block"><span class="text-sm font-medium">Tool name</span>
-        <input name="name" required maxlength="40" placeholder="e.g. Tile Cutter" class="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" /></label>
+        <input name="name" required maxlength="40" value="${esc(name)}" placeholder="e.g. Tile Cutter" class="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" /></label>
       <label class="block"><span class="text-sm font-medium">Category</span>
         <select name="category" class="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">${opts}</select></label>
       <button class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl">List it</button>
@@ -820,7 +1211,27 @@ function openAdd() {
   $('addForm').onsubmit = e => {
     e.preventDefault();
     const f = new FormData(e.target);
-    addTool(f.get('name').trim(), f.get('category'), getPhoto());
+    addTool(f.get('name').trim(), f.get('category'), getPhoto(), requestId);
+  };
+}
+
+function openAsk(prefill = '') {
+  openModal(`
+    <div class="p-6 pb-0 flex items-start justify-between">
+      <div><div class="font-semibold text-lg">Ask the street</div><div class="text-sm text-slate-500">Post what you need. Someone nearby probably has one.</div></div>
+      <button data-close class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <form id="askForm" class="p-6 space-y-4">
+      <label class="block"><span class="text-sm font-medium">What do you need?</span>
+        <input name="tool" required maxlength="40" value="${esc(prefill)}" placeholder="e.g. Tile Saw" class="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" /></label>
+      <label class="block"><span class="text-sm font-medium">What's it for? <span class="text-slate-400 font-normal">(optional)</span></span>
+        <input name="note" maxlength="100" placeholder="e.g. Redoing the bathroom floor" class="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" /></label>
+      <button class="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded-xl inline-flex items-center justify-center gap-2"><i data-lucide="megaphone" class="w-5 h-5"></i>Post request</button>
+    </form>`);
+  $('askForm').onsubmit = e => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    askTool(f.get('tool').trim(), f.get('note').trim());
   };
 }
 
@@ -828,31 +1239,168 @@ let toastTimer;
 function toast(msg, error = false) {
   const el = $('toast');
   el.textContent = msg;
-  el.className = `fixed bottom-6 left-1/2 -translate-x-1/2 z-50 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg ${error ? 'bg-red-600' : 'bg-slate-900'}`;
+  el.className = `fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] text-white text-sm px-4 py-2.5 rounded-xl shadow-lg ${error ? 'bg-red-600' : 'bg-slate-900'}`;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.add('hidden'), 3000);
 }
 
+// ─── Guided tour ───────────────────────────────────────────────────────────
+// Walks through the pitch on a scratch copy of the data; everything resets at the end.
+const TOUR_STEPS = [
+  { el: () => $('hero'), title: 'Meet BorrowBloc',
+    text: 'Every garage on the street has a drill that gets used for 13 minutes in its whole life. BorrowBloc turns the street into one shared tool library.',
+    before: () => { closeModal(); window.scrollTo({ top: 0 }); } },
+  { el: () => $('stats'), title: 'The whole street at a glance',
+    text: "Everything neighbors have listed, what's free right now, and how much sharing has already saved." },
+  { el: () => $('account'), title: 'No passwords, no friction',
+    text: "Ria picks her name and she's in. That's the entire sign-up.",
+    before: () => setUser(accountFor('Ria Nimbkar')) },
+  { el: () => $('checkoutForm'), title: 'Borrow in one tap',
+    text: 'Ria needs a drill. Soorya already booked it for later this week, so BorrowBloc sets her return date before then. No double-booking, no awkward texts.',
+    before: () => openTool(1) },
+  { el: () => document.querySelector('#grid [data-id="1"]'), title: 'Done, and synced',
+    text: 'The drill flips to Checked Out for the whole street, and the Google Sheet behind it updates live.',
+    before: async () => { await checkout(1, $('checkoutForm').querySelector('[name=due]').value); } },
+  { el: () => $('loanStatus'), title: 'Trust, built in',
+    text: 'Every return builds a track record. Marcus is 5 days late with Sarah’s pressure washer, and his badge shows it.',
+    before: () => { setUser(accountFor('Sarah Jenkins')); openTool(5); } },
+  { el: () => $('nudgeBox'), title: 'A friendly nudge',
+    text: 'One tap opens WhatsApp or SMS with a polite reminder already written. Nobody has to be the bad guy.' },
+  { el: () => $('waitlistBox'), title: 'A fair line',
+    text: "Two neighbors are waiting. When it comes back, it's held for whoever's next, and they get a heads-up." },
+  { el: () => $('calendarBox'), title: 'Book ahead',
+    text: 'Planning a weekend project? Reserve dates in advance. Returns also log the tool’s condition, so owners know what they’re getting back.' },
+  { el: () => $('requests'), title: 'Ask the street',
+    text: "Can't find something? Post a request. Ria wants a tile saw; anyone who has one can list it in seconds.",
+    before: () => closeModal() },
+  { el: () => $('impact'), title: 'It adds up',
+    text: () => `${loans.length} loans so far: ${money(loans.reduce((s, l) => s + meta(l.category).value, 0))} not spent and ${Math.round(loans.reduce((s, l) => s + meta(l.category).co2, 0)).toLocaleString()} kg of CO₂ avoided. One drill at a time.` },
+];
+
+function startTour() {
+  if (tour) return;
+  closeModal();
+  tour = { i: -1, el: null, snap: JSON.stringify({ tools, loans, requests, user, activeCategory, query }) };
+  activeCategory = 'All'; query = ''; $('search').value = '';
+  $('tourBlock').classList.remove('hidden');
+  nextTourStep();
+}
+
+async function nextTourStep() {
+  if (!tour) return;
+  tour.i++;
+  if (tour.i >= TOUR_STEPS.length) return endTour();
+  const step = TOUR_STEPS[tour.i];
+  $('tourCard').classList.add('hidden');
+  await step.before?.();
+  await sleep(80);
+  const el = step.el();
+  if (!el) return nextTourStep();
+  tour.el = el;
+  // Instant scroll so the spotlight never measures a half-scrolled page; the spotlight itself animates.
+  el.scrollIntoView({ block: 'center' });
+  await sleep(60);
+  placeTour();
+}
+
+function placeTour() {
+  if (!tour?.el) return;
+  const step = TOUR_STEPS[tour.i];
+  const r = tour.el.getBoundingClientRect();
+  const pad = 8, vw = innerWidth, vh = innerHeight;
+  const top = Math.max(8, r.top - pad), bottom = Math.min(vh - 8, r.bottom + pad);
+  const left = Math.max(8, r.left - pad), right = Math.min(vw - 8, r.right + pad);
+  Object.assign($('tourSpot').style, { top: top + 'px', left: left + 'px', width: right - left + 'px', height: bottom - top + 'px' });
+  $('tourSpot').classList.remove('hidden');
+
+  const last = tour.i === TOUR_STEPS.length - 1;
+  const card = $('tourCard');
+  card.innerHTML = `
+    <div class="text-xs font-semibold text-emerald-600 mb-1">${tour.i + 1} / ${TOUR_STEPS.length}</div>
+    <div class="font-semibold text-lg leading-snug">${esc(step.title)}</div>
+    <p class="text-sm text-slate-600 mt-1">${esc(typeof step.text === 'function' ? step.text() : step.text)}</p>
+    <div class="flex items-center justify-between mt-4">
+      <button data-tour="exit" class="text-sm text-slate-500 hover:text-slate-800">Exit tour</button>
+      <button data-tour="next" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">
+        ${last ? 'Finish & reset' : 'Next'}<i data-lucide="${last ? 'rotate-ccw' : 'arrow-right'}" class="w-4 h-4"></i></button>
+    </div>
+    <div class="flex gap-1 mt-3">${TOUR_STEPS.map((_, i) => `<span class="h-1 flex-1 rounded-full ${i <= tour.i ? 'bg-emerald-500' : 'bg-slate-200'}"></span>`).join('')}</div>`;
+  card.classList.remove('hidden');
+  lucide.createIcons();
+  const w = card.offsetWidth, h = card.offsetHeight;
+  let y = bottom + 12;
+  if (y + h > vh - 8) y = top - h - 12;
+  if (y < 8) y = Math.max(8, vh - h - 16);
+  const x = Math.min(Math.max(16, left), vw - w - 16);
+  Object.assign(card.style, { top: y + 'px', left: x + 'px' });
+}
+
+function endTour() {
+  if (!tour) return;
+  const s = JSON.parse(tour.snap);
+  tools = s.tools; loans = s.loans; requests = s.requests; user = s.user; activeCategory = s.activeCategory; query = s.query;
+  $('search').value = query;
+  if (user) store.set(KEYS.user, user); else store.del(KEYS.user);
+  tour = null;
+  ['tourBlock', 'tourSpot', 'tourCard'].forEach(id => $(id).classList.add('hidden'));
+  closeModal();
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  toast('Tour finished, demo data reset');
+}
+
+$('tourCard').addEventListener('click', e => {
+  const b = e.target.closest('[data-tour]'); if (!b) return;
+  if (b.dataset.tour === 'next') nextTourStep(); else endTour();
+});
+addEventListener('resize', placeTour);
+addEventListener('scroll', placeTour, { passive: true });
+$('modalCard').addEventListener('scroll', placeTour, { passive: true });
+
 // ─── Wiring ────────────────────────────────────────────────────────────────
 $('grid').addEventListener('click', e => { const c = e.target.closest('[data-id]'); if (c) openTool(Number(c.dataset.id)); });
 $('impact').addEventListener('click', e => { const c = e.target.closest('[data-id]'); if (c) openTool(Number(c.dataset.id)); });
-$('modalBody').addEventListener('click', async e => {
+$('filters').addEventListener('click', e => { const b = e.target.closest('[data-cat]'); if (b) { activeCategory = b.dataset.cat; render(); } });
+$('search').addEventListener('input', e => { query = e.target.value; render(); });
+$('addBtn').onclick = () => requireUser(() => openAdd());
+$('tourBtn').onclick = startTour;
+$('modal').addEventListener('click', e => { if (e.target.id === 'modal' || e.target.closest('[data-close]')) { afterLogin = null; closeModal(); } });
+
+// One handler for every data-action button (modals, wish list, empty state).
+document.addEventListener('click', async e => {
   const b = e.target.closest('[data-action]'); if (!b) return;
+  const a = b.dataset.action;
   const id = Number(b.dataset.tool);
-  const t = tools.find(t => t.id === id);
-  if (b.dataset.action === 'join') requireUser(() => joinWaitlist(id));
-  if (b.dataset.action === 'leave') leaveWaitlist(id, user.name);
-  if (b.dataset.action === 'release') leaveWaitlist(id, t.waitlist[0]);
-  if (b.dataset.action === 'copy') {
+  const t = toolById(id);
+  const req = requests.find(r => r.id === Number(b.dataset.req));
+  if (a === 'join') requireUser(() => joinWaitlist(id));
+  if (a === 'leave') leaveWaitlist(id, user.name);
+  if (a === 'release') leaveWaitlist(id, t.waitlist[0]);
+  if (a === 'fixed') markFixed(id);
+  if (a === 'unres') unreserve(id, b.dataset.name, b.dataset.start);
+  if (a === 'bookLogin') requireUser(() => openTool(id));
+  if (a === 'ask') requireUser(() => openAsk(b.dataset.q || ''));
+  if (a === 'haveIt' && req) requireUser(() => openAdd({ name: req.tool, requestId: req.id }));
+  if (a === 'closeReq' && req) closeRequest(req.id);
+  if (a === 'day') {
+    // First tap sets the start; a later tap extends to that end date.
+    const s = $('resStart'), en = $('resEnd'); if (!s) return;
+    const d = b.dataset.day;
+    if (!s.value || d < s.value || (en.value && en.value !== s.value)) { s.value = d; en.value = d; }
+    else en.value = d;
+  }
+  if (a === 'copy') {
     try { await navigator.clipboard.writeText(b.dataset.text); toast('Message copied'); }
     catch { toast('Could not copy, select the text instead', true); }
   }
 });
-$('filters').addEventListener('click', e => { const b = e.target.closest('[data-cat]'); if (b) { activeCategory = b.dataset.cat; render(); } });
-$('search').addEventListener('input', e => { query = e.target.value; render(); });
-$('addBtn').onclick = () => requireUser(openAdd);
-$('modal').addEventListener('click', e => { if (e.target.id === 'modal' || e.target.closest('[data-close]')) { afterLogin = null; closeModal(); } });
+
 document.addEventListener('keydown', e => {
+  if (tour) {
+    if (e.key === 'Escape') endTour();
+    if (e.key === 'ArrowRight' || e.key === 'Enter') { e.preventDefault(); nextTourStep(); }
+    return;
+  }
   if (e.key === 'Escape') { afterLogin = null; closeModal(); }
   if (e.key === '/' && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) { e.preventDefault(); $('search').focus(); }
 });
@@ -860,11 +1408,11 @@ document.addEventListener('keydown', e => {
 (async function init() {
   setupBranding();
   if (mode === 'live') {
-    await fetchTools();
-    if (!tools.length) { tools = loadLocal(); mode = 'demo'; setSync('demo'); render(); toast('Sheet unreachable, running on demo data', true); }
-    else setInterval(() => { if (!busy && document.visibilityState === 'visible') fetchTools(); }, POLL_MS);
+    await fetchAll();
+    if (!tools.length) { loadLocal(); mode = 'demo'; setSync('demo'); render(); toast('Sheet unreachable, running on demo data', true); }
+    else setInterval(() => { if (!busy && !tour && document.visibilityState === 'visible') fetchAll(); }, POLL_MS);
   } else {
-    tools = loadLocal();
+    loadLocal();
     setSync('demo');
     render();
   }
