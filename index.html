@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BorrowBloc - Neighborhood Tool Library</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .card-enter { animation: pop .25s ease-out; }
+    @keyframes pop { from { transform: scale(.97); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+    .flash { animation: flash 1.2s ease-out; }
+    @keyframes flash { 0% { box-shadow: 0 0 0 4px rgb(16 185 129 / .6) } 100% { box-shadow: 0 0 0 0 rgb(16 185 129 / 0) } }
+    .pulse-dot { animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+  <!-- Navbar -->
+  <nav class="bg-white/80 backdrop-blur border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-emerald-600 text-white grid place-items-center"><i data-lucide="hammer" class="w-5 h-5"></i></div>
+        <div>
+          <div class="font-bold text-lg leading-tight">BorrowBloc</div>
+          <div class="text-xs text-slate-500 leading-tight hidden sm:block">Neighborhood Tool Library</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="syncBadge" class="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
+          <span class="w-2 h-2 rounded-full bg-slate-400"></span> Connecting…
+        </span>
+        <button id="addBtn" class="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-700 text-white text-sm font-medium px-3 py-2 rounded-lg">
+          <i data-lucide="plus" class="w-4 h-4"></i><span class="hidden sm:inline">Share a tool</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-6xl mx-auto px-4 py-8">
+    <!-- Hero -->
+    <header class="mb-6">
+      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">Borrow it. Don't buy it.</h1>
+      <p class="text-slate-500 mt-1">The average drill is used 13 minutes in its lifetime. Share what your street already owns.</p>
+    </header>
+
+    <!-- Stats banner -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div class="bg-white rounded-2xl border border-slate-200 p-4">
+        <div class="flex items-center gap-2 text-slate-500 text-sm"><i data-lucide="package" class="w-4 h-4"></i>Total tools</div>
+        <div id="statTotal" class="text-3xl font-bold mt-1">–</div>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-4">
+        <div class="flex items-center gap-2 text-emerald-600 text-sm"><i data-lucide="circle-check" class="w-4 h-4"></i>Available</div>
+        <div id="statAvail" class="text-3xl font-bold mt-1 text-emerald-600">–</div>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-4">
+        <div class="flex items-center gap-2 text-amber-600 text-sm"><i data-lucide="clock" class="w-4 h-4"></i>Checked out</div>
+        <div id="statOut" class="text-3xl font-bold mt-1 text-amber-600">–</div>
+      </div>
+      <div class="bg-gradient-to-br from-emerald-600 to-teal-600 text-white rounded-2xl p-4">
+        <div class="flex items-center gap-2 text-emerald-50 text-sm"><i data-lucide="piggy-bank" class="w-4 h-4"></i>Saved by sharing</div>
+        <div id="statSaved" class="text-3xl font-bold mt-1">$0</div>
+        <div class="text-xs text-emerald-100 mt-0.5">in purchases neighbors didn't make</div>
+      </div>
+    </section>
+
+    <!-- Search + filters -->
+    <section class="flex flex-col sm:flex-row gap-3 mb-6">
+      <div class="relative flex-1">
+        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+        <input id="search" type="search" placeholder="Search tools or categories…"
+          class="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+      </div>
+      <div id="filters" class="flex gap-2 overflow-x-auto"></div>
+    </section>
+
+    <!-- Grid -->
+    <section id="grid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></section>
+    <div id="empty" class="hidden text-center py-16 text-slate-500">
+      <i data-lucide="search-x" class="w-10 h-10 mx-auto mb-2 text-slate-300"></i>
+      No tools match your search.
+    </div>
+  </main>
+
+  <!-- Modal -->
+  <div id="modal" class="hidden fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm grid place-items-center p-4">
+    <div class="bg-white rounded-2xl w-full max-w-md shadow-xl card-enter" role="dialog" aria-modal="true">
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg"></div>
+
+<script>
+// ─── Config ────────────────────────────────────────────────────────────────
+// Paste your Google Apps Script Web App URL here (see apps-script/Code.gs).
+// Leave empty to run in demo mode with local data saved in the browser.
+const SHEET_ENDPOINT = '';
+const POLL_MS = 5000;
+const LOAN_DAYS = 7;
+
+// Rough retail prices, used for the "Saved by sharing" stat.
+const CATEGORY_META = {
+  'Power Tools':        { icon: 'drill',  value: 120, color: 'bg-sky-100 text-sky-700' },
+  'Gardening':          { icon: 'sprout', value: 80,  color: 'bg-lime-100 text-lime-700' },
+  'Yard & Maintenance': { icon: 'wrench', value: 150, color: 'bg-violet-100 text-violet-700' },
+  'Kitchen':            { icon: 'chef-hat', value: 60, color: 'bg-rose-100 text-rose-700' },
+  'Camping':            { icon: 'tent',   value: 100, color: 'bg-orange-100 text-orange-700' },
+};
+const DEFAULT_META = { icon: 'package', value: 50, color: 'bg-slate-100 text-slate-700' };
+const meta = c => CATEGORY_META[c] || DEFAULT_META;
+
+const MOCK_DATA = [
+  { id: 1, name: 'Cordless Drill',     category: 'Power Tools',        status: 'Available',   borrower: '', due: '' },
+  { id: 2, name: 'Heavy-Duty Ladder',  category: 'Yard & Maintenance', status: 'Checked Out', borrower: 'Sarah Jenkins', due: '2026-10-02' },
+  { id: 3, name: 'Wheelbarrow',        category: 'Gardening',          status: 'Available',   borrower: '', due: '' },
+  { id: 4, name: 'Circular Saw',       category: 'Power Tools',        status: 'Available',   borrower: '', due: '' },
+  { id: 5, name: 'Pressure Washer',    category: 'Yard & Maintenance', status: 'Checked Out', borrower: 'Marcus Lee', due: '2026-09-20' },
+  { id: 6, name: 'Hedge Trimmer',      category: 'Gardening',          status: 'Available',   borrower: '', due: '' },
+  { id: 7, name: 'Stand Mixer',        category: 'Kitchen',            status: 'Available',   borrower: '', due: '' },
+  { id: 8, name: '4-Person Tent',      category: 'Camping',            status: 'Available',   borrower: '', due: '' },
+];
+
+// ─── State ─────────────────────────────────────────────────────────────────
+let tools = [];
+let query = '';
+let activeCategory = 'All';
+let mode = SHEET_ENDPOINT ? 'live' : 'demo';
+let busy = false;           // pause polling while a write is in flight
+let flashId = null;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const localISO = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const todayISO = () => localISO(new Date());
+const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return localISO(d); };
+const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+const isOverdue = t => t.status === 'Checked Out' && t.due && t.due < todayISO();
+
+// ─── Data layer ────────────────────────────────────────────────────────────
+function loadLocal() {
+  try { const s = localStorage.getItem('borrowbloc'); if (s) return JSON.parse(s); } catch {}
+  return structuredClone(MOCK_DATA);
+}
+function saveLocal() { try { localStorage.setItem('borrowbloc', JSON.stringify(tools)); } catch {} }
+
+async function fetchTools() {
+  if (mode !== 'live') return;
+  try {
+    const res = await fetch(SHEET_ENDPOINT, { cache: 'no-store' });
+    const data = await res.json();
+    if (!Array.isArray(data.tools)) throw new Error('bad payload');
+    const before = JSON.stringify(tools);
+    const next = data.tools.map(normalize);
+    if (!busy && JSON.stringify(next) !== before) {
+      // Highlight whichever card changed remotely (e.g. someone edited the sheet).
+      const changed = next.find(n => { const o = tools.find(t => t.id === n.id); return !o || JSON.stringify(o) !== JSON.stringify(n); });
+      tools = next;
+      if (changed && before !== '[]') flashId = changed.id;
+      render();
+    }
+    setSync('live');
+  } catch (e) {
+    console.warn('Sheet fetch failed', e);
+    setSync('offline');
+  }
+}
+
+function normalize(r) {
+  return {
+    id: Number(r.id),
+    name: r.name || '',
+    category: r.category || 'Other',
+    status: r.status === 'Checked Out' ? 'Checked Out' : 'Available',
+    borrower: r.borrower && r.borrower !== '—' ? r.borrower : '',
+    due: r.due && r.due !== '—' ? String(r.due).slice(0, 10) : '',
+  };
+}
+
+async function write(action, payload) {
+  if (mode !== 'live') { saveLocal(); return true; }
+  busy = true;
+  try {
+    // text/plain avoids a CORS preflight, which Apps Script doesn't answer.
+    const res = await fetch(SHEET_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action, ...payload }) });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'write failed');
+    return true;
+  } catch (e) {
+    console.warn(e);
+    toast('Could not reach the sheet, change not saved', true);
+    return false;
+  } finally {
+    busy = false;
+  }
+}
+
+// ─── Actions ───────────────────────────────────────────────────────────────
+async function checkout(id, borrower, due) {
+  const t = tools.find(t => t.id === id); const prev = { ...t };
+  Object.assign(t, { status: 'Checked Out', borrower, due });
+  flashId = id; closeModal(); render();
+  if (await write('checkout', { id, borrower, due })) toast(`${t.name} is yours until ${fmtDate(due)}. Enjoy!`);
+  else { Object.assign(t, prev); render(); }
+}
+
+async function giveBack(id) {
+  const t = tools.find(t => t.id === id); const prev = { ...t };
+  Object.assign(t, { status: 'Available', borrower: '', due: '' });
+  flashId = id; closeModal(); render();
+  if (await write('return', { id })) toast(`Thanks for returning the ${t.name}!`);
+  else { Object.assign(t, prev); render(); }
+}
+
+async function addTool(name, category) {
+  const id = tools.reduce((m, t) => Math.max(m, t.id), 0) + 1;
+  const t = { id, name, category, status: 'Available', borrower: '', due: '' };
+  tools.push(t); flashId = id; closeModal(); render();
+  if (await write('add', t)) toast(`${name} added to the library 🎉`);
+  else { tools = tools.filter(x => x.id !== id); render(); }
+}
+
+// ─── Rendering ─────────────────────────────────────────────────────────────
+function setSync(state) {
+  const b = $('syncBadge');
+  const s = {
+    live:    ['bg-emerald-50 text-emerald-700', 'bg-emerald-500 pulse-dot', 'Live · Google Sheet'],
+    offline: ['bg-red-50 text-red-700', 'bg-red-500', 'Offline · retrying'],
+    demo:    ['bg-slate-100 text-slate-600', 'bg-slate-400', 'Demo mode'],
+  }[state];
+  b.className = `inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${s[0]}`;
+  b.innerHTML = `<span class="w-2 h-2 rounded-full ${s[1]}"></span> ${s[2]}`;
+}
+
+function renderStats() {
+  const out = tools.filter(t => t.status === 'Checked Out');
+  $('statTotal').textContent = tools.length;
+  $('statAvail').textContent = tools.length - out.length;
+  $('statOut').textContent = out.length;
+  $('statSaved').textContent = '$' + out.reduce((s, t) => s + meta(t.category).value, 0).toLocaleString();
+}
+
+function renderFilters() {
+  const cats = ['All', ...new Set(tools.map(t => t.category))];
+  $('filters').innerHTML = cats.map(c => `
+    <button data-cat="${esc(c)}" class="whitespace-nowrap px-3 py-2 rounded-xl text-sm font-medium border ${c === activeCategory ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 hover:border-slate-400'}">${esc(c)}</button>`).join('');
+}
+
+function cardHTML(t) {
+  const m = meta(t.category);
+  const avail = t.status === 'Available';
+  const overdue = isOverdue(t);
+  const badge = avail
+    ? `<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Available</span>`
+    : overdue
+      ? `<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-red-100 text-red-700"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Overdue</span>`
+      : `<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-amber-100 text-amber-700"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Checked Out</span>`;
+  const footer = avail
+    ? `<span class="text-emerald-700 font-medium inline-flex items-center gap-1">Borrow now <i data-lucide="arrow-right" class="w-4 h-4"></i></span>`
+    : `<span class="inline-flex items-center gap-1.5 text-slate-600"><i data-lucide="user" class="w-4 h-4"></i>${esc(t.borrower)}</span>
+       <span class="${overdue ? 'text-red-600 font-medium' : 'text-slate-500'}">${t.due ? 'Due ' + fmtDate(t.due) : ''}</span>`;
+  return `
+    <button data-id="${t.id}" class="card-enter ${t.id === flashId ? 'flash' : ''} text-left bg-white rounded-2xl border ${overdue ? 'border-red-200' : 'border-slate-200'} p-5 hover:shadow-md hover:-translate-y-0.5 transition focus:outline-none focus:ring-2 focus:ring-emerald-500">
+      <div class="flex items-start justify-between gap-3">
+        <div class="w-11 h-11 rounded-xl grid place-items-center ${m.color}"><i data-lucide="${m.icon}" class="w-5 h-5"></i></div>
+        ${badge}
+      </div>
+      <div class="mt-4 font-semibold text-lg">${esc(t.name)}</div>
+      <div class="text-sm text-slate-500">${esc(t.category)}</div>
+      <div class="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between text-sm min-h-[1.5rem]">${footer}</div>
+    </button>`;
+}
+
+function render() {
+  renderStats();
+  renderFilters();
+  const q = query.trim().toLowerCase();
+  const list = tools
+    .filter(t => activeCategory === 'All' || t.category === activeCategory)
+    .filter(t => !q || t.name.toLowerCase().includes(q) || t.category.toLowerCase().includes(q) || t.borrower.toLowerCase().includes(q))
+    .sort((a, b) => (a.status === b.status ? a.id - b.id : a.status === 'Available' ? -1 : 1));
+  $('grid').innerHTML = list.map(cardHTML).join('');
+  $('empty').classList.toggle('hidden', list.length > 0);
+  lucide.createIcons();
+  flashId = null;
+}
+
+// ─── Modals ────────────────────────────────────────────────────────────────
+function openModal(html) {
+  $('modalBody').innerHTML = html;
+  $('modal').classList.remove('hidden');
+  lucide.createIcons();
+  $('modalBody').querySelector('input')?.focus();
+}
+function closeModal() { $('modal').classList.add('hidden'); }
+
+function modalHeader(t) {
+  const m = meta(t.category);
+  return `
+    <div class="p-6 pb-0 flex items-start gap-4">
+      <div class="w-12 h-12 rounded-xl grid place-items-center ${m.color}"><i data-lucide="${m.icon}" class="w-6 h-6"></i></div>
+      <div class="flex-1">
+        <div class="font-semibold text-lg">${esc(t.name)}</div>
+        <div class="text-sm text-slate-500">${esc(t.category)} · saves ~$${m.value} vs buying</div>
+      </div>
+      <button data-close class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>`;
+}
+
+function openTool(id) {
+  const t = tools.find(t => t.id === id);
+  if (!t) return;
+  if (t.status === 'Available') {
+    openModal(`${modalHeader(t)}
+      <form id="checkoutForm" class="p-6 space-y-4">
+        <label class="block">
+          <span class="text-sm font-medium">Your name</span>
+          <input name="borrower" required maxlength="40" placeholder="e.g. Alex from #12" class="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+        </label>
+        <label class="block">
+          <span class="text-sm font-medium">Return by</span>
+          <input name="due" type="date" required min="${todayISO()}" value="${addDays(LOAN_DAYS)}" class="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+        </label>
+        <button class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl inline-flex items-center justify-center gap-2">
+          <i data-lucide="hand-helping" class="w-5 h-5"></i>Borrow
+        </button>
+      </form>`);
+    $('checkoutForm').onsubmit = e => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      checkout(id, f.get('borrower').trim(), f.get('due'));
+    };
+  } else {
+    const overdue = isOverdue(t);
+    openModal(`${modalHeader(t)}
+      <div class="p-6 space-y-4">
+        <div class="rounded-xl ${overdue ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-800'} p-4 text-sm">
+          Borrowed by <b>${esc(t.borrower)}</b>${t.due ? `, ${overdue ? 'was due' : 'due back'} <b>${fmtDate(t.due)}</b>` : ''}.
+        </div>
+        <button id="returnBtn" class="w-full bg-slate-900 hover:bg-slate-700 text-white font-semibold py-3 rounded-xl inline-flex items-center justify-center gap-2">
+          <i data-lucide="undo-2" class="w-5 h-5"></i>Return tool
+        </button>
+      </div>`);
+    $('returnBtn').onclick = () => giveBack(id);
+  }
+}
+
+function openAdd() {
+  const opts = [...new Set([...Object.keys(CATEGORY_META), ...tools.map(t => t.category)])]
+    .map(c => `<option>${esc(c)}</option>`).join('');
+  openModal(`
+    <div class="p-6 pb-0 flex items-start justify-between">
+      <div><div class="font-semibold text-lg">Share a tool</div><div class="text-sm text-slate-500">Add something from your garage to the library.</div></div>
+      <button data-close class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <form id="addForm" class="p-6 space-y-4">
+      <label class="block"><span class="text-sm font-medium">Tool name</span>
+        <input name="name" required maxlength="40" placeholder="e.g. Tile Cutter" class="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" /></label>
+      <label class="block"><span class="text-sm font-medium">Category</span>
+        <select name="category" class="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">${opts}</select></label>
+      <button class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl">Add to library</button>
+    </form>`);
+  $('addForm').onsubmit = e => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    addTool(f.get('name').trim(), f.get('category'));
+  };
+}
+
+let toastTimer;
+function toast(msg, error = false) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = `fixed bottom-6 left-1/2 -translate-x-1/2 z-50 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg ${error ? 'bg-red-600' : 'bg-slate-900'}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 3000);
+}
+
+// ─── Wiring ────────────────────────────────────────────────────────────────
+$('grid').addEventListener('click', e => { const c = e.target.closest('[data-id]'); if (c) openTool(Number(c.dataset.id)); });
+$('filters').addEventListener('click', e => { const b = e.target.closest('[data-cat]'); if (b) { activeCategory = b.dataset.cat; render(); } });
+$('search').addEventListener('input', e => { query = e.target.value; render(); });
+$('addBtn').onclick = openAdd;
+$('modal').addEventListener('click', e => { if (e.target.id === 'modal' || e.target.closest('[data-close]')) closeModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+  if (e.key === '/' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); $('search').focus(); }
+});
+
+(async function init() {
+  if (mode === 'live') {
+    await fetchTools();
+    if (!tools.length) { tools = loadLocal(); mode = 'demo'; setSync('demo'); render(); toast('Sheet unreachable, running on demo data', true); }
+    else setInterval(() => { if (!busy && document.visibilityState === 'visible') fetchTools(); }, POLL_MS);
+  } else {
+    tools = loadLocal();
+    setSync('demo');
+    render();
+  }
+})();
+</script>
+</body>
+</html>

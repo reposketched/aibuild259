@@ -1,0 +1,78 @@
+# Project Spec Sheet: Community Tool-Sharing Library Tracker ("BorrowBloc")
+
+## 1. Project Overview
+
+* **Project Name:** BorrowBloc
+* **Category:** Social Good / Circular Economy / Community Resilience
+* **Build Time Target:** 1 Hour
+* **Elevator Pitch:** A lightweight, zero-auth inventory and lending tracker for neighborhood communities that cuts down waste, saves money on duplicate tool purchases, and builds hyper-local trust.
+
+---
+
+## 2. User Flow & Core Features (The "Happy Path")
+
+To keep development strictly within a 1-hour window, the app focuses on three core views on a single dashboard page:
+
+1. **Inventory Grid:** View all available neighborhood tools (Name, Category, Status: *Available* vs. *Checked Out*, Borrower Name).
+2. **Instant Checkout/Check-in:** A single click opens a modal where a neighbor inputs their name to check out an available tool.
+3. **Live Sync Status:** Edits reflect instantly via a connected Google Sheet backend.
+
+---
+
+## 3. Tech Stack & Architecture
+
+* **Frontend:** Single-file HTML / JavaScript utilizing Tailwind CSS (loaded via CDN) for rapid, modern UI styling.
+* **Icons:** Lucide Icons (via CDN) for clean iconography.
+* **Backend / Database:** Google Sheets API (or SheetDB / SheetBest wrapper) acting as a lightning-fast, zero-setup relational database.
+* **Hosting:** Vercel, Netlify, or local file open in browser for instant zero-config testing.
+
+---
+
+## 4. Data Schema (Google Sheet Structure)
+
+Create a Google Sheet with one tab named `Inventory` containing these columns:
+
+| Column A (ID) | Column B (Tool Name) | Column C (Category) | Column D (Status) | Column E (Borrower) | Column F (Due Date) |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Cordless Drill | Power Tools | Available | — | — |
+| 2 | Heavy-Duty Ladder | Yard & Maintenance | Checked Out | Sarah Jenkins | Oct 2, 2026 |
+| 3 | Wheelbarrow | Gardening | Available | — | — |
+| 4 | Circular Saw | Power Tools | Available | — | — |
+
+---
+
+## 5. Step-by-Step 1-Hour Execution Plan
+
+### Minute 0–15: Setup & Layout
+
+* Create a simple HTML boilerplate file (`index.html`).
+* Import Tailwind CSS and Lucide script tags in the header.
+* Build the main layout shell: Navbar ("BorrowBloc - Neighborhood Tool Library"), a stats banner (*Total Tools, Available, Checked Out*), and a responsive grid container for tool cards.
+
+### Minute 16–30: Frontend Logic & Mock Data
+
+* Write local mock JavaScript data matching the schema above so you can build and test UI elements without waiting on network calls.
+* Write a JavaScript render function that dynamically populates the tool cards onto the grid with color-coded status badges (Green for Available, Amber for Checked Out).
+
+### Minute 31–45: Interactivity & Modals
+
+* Implement a click listener on tool cards to open a modal window.
+* **If Available:** Show a form field ("Your Name") and a "Confirm Checkout" button.
+* **If Checked Out:** Show a "Return Tool" button.
+* Update local array state on submit to verify the UI interaction works smoothly.
+
+### Minute 46–60: Backend Connection & Polish
+
+* Connect your frontend JavaScript `fetch()` requests to a simple Google Sheets wrapper (e.g., SheetBest or a Google Apps Script Web App endpoint).
+* Perform a live test: Update a cell in your Google Sheet, refresh the page, and watch it update.
+* Add finishing touches: A search bar input at the top to filter tools instantly by name or category.
+
+---
+
+## 6. Demo Script for the Hackathon Pitch (60 Seconds)
+
+1. **The Hook (15s):** *"Every garage on our street has a lawnmower and a ladder sitting unused 95% of the time, while neighbors waste money buying duplicates. Meet BorrowBloc."*
+2. **The Action (30s):** Show the clean dashboard. Click on the *Cordless Drill*, type in a judge's name, click "Borrow", and watch the status instantly switch to **Checked Out** with their name attached. Open the Google Sheet side-by-side to show real-time cloud sync.
+3. **The Impact (15s):** *"Zero setup, zero auth friction, built in an hour. It transforms neighborhoods into sharing economies, reducing waste one drill at a time."*
+
+---
