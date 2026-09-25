@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BorrowBloc - Neighborhood Tool Library</title>
-  <link id="favicon" rel="icon" type="image/png" href="favico.png" />
+  <link id="favicon" rel="icon" type="image/png" href="assets/image.png" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
   <style>
@@ -65,7 +65,7 @@
       <div class="bg-gradient-to-br from-emerald-600 to-teal-600 text-white rounded-2xl p-4">
         <div class="flex items-center gap-2 text-emerald-50 text-sm"><i data-lucide="piggy-bank" class="w-4 h-4"></i>Saved by sharing</div>
         <div id="statSaved" class="text-3xl font-bold mt-1">$0</div>
-        <div class="text-xs text-emerald-100 mt-0.5">in purchases neighbors didn't make</div>
+        <div id="statSavedSub" class="text-xs text-emerald-100 mt-0.5">in purchases neighbors didn't make</div>
       </div>
     </section>
 
@@ -85,6 +85,9 @@
       <i data-lucide="search-x" class="w-10 h-10 mx-auto mb-2 text-slate-300"></i>
       <span id="emptyText">No tools match your search.</span>
     </div>
+
+    <!-- Community impact -->
+    <section id="impact" class="mt-10"></section>
   </main>
 
   <!-- Modal -->
@@ -106,23 +109,24 @@ const POLL_MS = 5000;
 const LOAN_DAYS = 7;
 const MAX_PHOTO_CHARS = 45000;   // a Google Sheets cell holds at most 50k characters
 
-// Rough retail prices, used for the "Saved by sharing" stat.
+// Rough per-item estimates for the impact numbers: retail price ($), manufacturing
+// footprint (kg CO2e) and weight (kg). Each loan counts as one purchase avoided.
 const CATEGORY_META = {
-  'Power Tools':        { icon: 'drill',    value: 120, color: 'bg-sky-100 text-sky-600' },
-  'Gardening':          { icon: 'sprout',   value: 80,  color: 'bg-lime-100 text-lime-600' },
-  'Yard & Maintenance': { icon: 'wrench',   value: 150, color: 'bg-violet-100 text-violet-600' },
-  'Kitchen':            { icon: 'chef-hat', value: 60,  color: 'bg-rose-100 text-rose-600' },
-  'Camping':            { icon: 'tent',     value: 100, color: 'bg-orange-100 text-orange-600' },
+  'Power Tools':        { icon: 'drill',    value: 120, co2: 30, kg: 2,  color: 'bg-sky-100 text-sky-600' },
+  'Gardening':          { icon: 'sprout',   value: 80,  co2: 40, kg: 12, color: 'bg-lime-100 text-lime-600' },
+  'Yard & Maintenance': { icon: 'wrench',   value: 150, co2: 60, kg: 10, color: 'bg-violet-100 text-violet-600' },
+  'Kitchen':            { icon: 'chef-hat', value: 60,  co2: 45, kg: 6,  color: 'bg-rose-100 text-rose-600' },
+  'Camping':            { icon: 'tent',     value: 100, co2: 25, kg: 4,  color: 'bg-orange-100 text-orange-600' },
 };
-const DEFAULT_META = { icon: 'package', value: 50, color: 'bg-slate-100 text-slate-600' };
+const DEFAULT_META = { icon: 'package', value: 50, co2: 20, kg: 3, color: 'bg-slate-100 text-slate-600' };
 const meta = c => CATEGORY_META[c] || DEFAULT_META;
 
-// Demo accounts: no passwords, just pick a neighbor.
+// Demo accounts: no passwords, just pick a neighbor. 555-01xx numbers are reserved as fictional.
 const DEMO_ACCOUNTS = [
-  { name: 'Sarah Jenkins', home: '#14 Maple St' },
-  { name: 'Marcus Lee',    home: '#22 Maple St' },
-  { name: 'Priya Patel',   home: '#9 Oak Ave' },
-  { name: 'Alex Kim',      home: '#31 Oak Ave' },
+  { name: 'Sarah Jenkins', home: '#14 Maple St', phone: '+15555550101' },
+  { name: 'Marcus Lee',    home: '#22 Maple St', phone: '+15555550102' },
+  { name: 'Priya Patel',   home: '#9 Oak Ave',   phone: '+15555550103' },
+  { name: 'Alex Kim',      home: '#31 Oak Ave',  phone: '+15555550104' },
 ];
 const AVATAR_COLORS = ['bg-emerald-500', 'bg-sky-500', 'bg-violet-500', 'bg-amber-500', 'bg-rose-500', 'bg-teal-500'];
 
@@ -140,14 +144,29 @@ const PHOTO_CREDITS = {
 
 const MOCK_DATA = [
   { id: 1, name: 'Cordless Drill',    category: 'Power Tools',        status: 'Available',   borrower: '',              due: '',           owner: 'Marcus Lee',    photo: 'assets/tools/cordless-drill.jpg' },
-  { id: 2, name: 'Heavy-Duty Ladder', category: 'Yard & Maintenance', status: 'Checked Out', borrower: 'Sarah Jenkins', due: '2026-10-02', owner: 'Priya Patel',   photo: 'assets/tools/ladder.jpg' },
+  { id: 2, name: 'Heavy-Duty Ladder', category: 'Yard & Maintenance', status: 'Checked Out', borrower: 'Sarah Jenkins', due: '2026-10-02', owner: 'Priya Patel',   photo: 'assets/tools/ladder.jpg', waitlist: ['Alex Kim'] },
   { id: 3, name: 'Wheelbarrow',       category: 'Gardening',          status: 'Available',   borrower: '',              due: '',           owner: 'Alex Kim',      photo: 'assets/tools/wheelbarrow.jpg' },
   { id: 4, name: 'Circular Saw',      category: 'Power Tools',        status: 'Available',   borrower: '',              due: '',           owner: 'Marcus Lee',    photo: 'assets/tools/circular-saw.jpg' },
-  { id: 5, name: 'Pressure Washer',   category: 'Yard & Maintenance', status: 'Checked Out', borrower: 'Marcus Lee',    due: '2026-09-20', owner: 'Sarah Jenkins', photo: 'assets/tools/pressure-washer.jpg' },
+  { id: 5, name: 'Pressure Washer',   category: 'Yard & Maintenance', status: 'Checked Out', borrower: 'Marcus Lee',    due: '2026-09-20', owner: 'Sarah Jenkins', photo: 'assets/tools/pressure-washer.jpg', waitlist: ['Priya Patel', 'Alex Kim'] },
   { id: 6, name: 'Hedge Trimmer',     category: 'Gardening',          status: 'Available',   borrower: '',              due: '',           owner: 'Priya Patel',   photo: 'assets/tools/hedge-trimmer.jpg' },
   { id: 7, name: 'Stand Mixer',       category: 'Kitchen',            status: 'Available',   borrower: '',              due: '',           owner: 'Sarah Jenkins', photo: 'assets/tools/stand-mixer.jpg' },
   { id: 8, name: '4-Person Tent',     category: 'Camping',            status: 'Available',   borrower: '',              due: '',           owner: 'Alex Kim',      photo: 'assets/tools/tent.jpg' },
 ];
+
+// Past loans for the demo: [tool id, borrower, days ago]. Dates stay relative to today.
+const MOCK_LOAN_ROWS = [
+  [1, 'Sarah Jenkins', 61], [3, 'Priya Patel', 58], [7, 'Alex Kim', 55], [4, 'Priya Patel', 51],
+  [1, 'Alex Kim', 47], [6, 'Marcus Lee', 44], [8, 'Sarah Jenkins', 40], [3, 'Marcus Lee', 37],
+  [1, 'Priya Patel', 33], [5, 'Alex Kim', 30], [7, 'Priya Patel', 27], [2, 'Marcus Lee', 24],
+  [4, 'Sarah Jenkins', 21], [6, 'Alex Kim', 18], [1, 'Sarah Jenkins', 16], [8, 'Priya Patel', 14],
+  [5, 'Marcus Lee', 12], [3, 'Sarah Jenkins', 9], [1, 'Alex Kim', 6], [7, 'Marcus Lee', 4], [2, 'Sarah Jenkins', 2],
+];
+function mockLoans() {
+  return MOCK_LOAN_ROWS.map(([id, borrower, ago]) => {
+    const t = MOCK_DATA.find(t => t.id === id);
+    return { date: addDays(-ago), toolId: id, tool: t.name, category: t.category, borrower, owner: t.owner };
+  });
+}
 
 // localStorage can throw (private mode, blocked storage), so every access is guarded.
 const store = {
@@ -158,6 +177,7 @@ const store = {
 
 // ─── State ─────────────────────────────────────────────────────────────────
 let tools = [];
+let loans = [];
 let query = '';
 let activeCategory = 'All';
 let mode = SHEET_ENDPOINT ? 'live' : 'demo';
@@ -175,11 +195,20 @@ const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(unde
 const isOverdue = t => t.status === 'Checked Out' && t.due && t.due < todayISO();
 const safePhoto = p => /^(data:image\/(png|jpe?g|webp|gif);base64,|https:\/\/|assets\/[\w\/.-]+$)/.test(p || '') ? p : '';
 const sameName = (a, b) => !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
+const firstName = n => (n || '').split(' ')[0];
+const heldFor = t => (t.status === 'Available' && t.waitlist.length ? t.waitlist[0] : '');
+const isMe = n => !!user && sameName(n, user.name);
+const money = n => '$' + Math.round(n).toLocaleString();
 
-// ─── Branding: favico.png, or the hammer icon if it's missing ───────────────
+// ─── Branding ──────────────────────────────────────────────────────────────
+// Navbar logo is assets/favico.png, browser-tab icon is assets/image.png;
+// either falls back to the hammer if its file is missing.
 function setupBranding() {
+  const logo = new Image();
+  logo.onload = () => { $('logo').className = 'w-9 h-9 shrink-0 rounded-xl overflow-hidden bg-white'; $('logo').innerHTML = '<img src="assets/favico.png" alt="BorrowBloc" class="w-full h-full object-cover" />'; };
+  logo.src = 'assets/favico.png';
+
   const img = new Image();
-  img.onload = () => { $('logo').className = 'w-9 h-9 shrink-0 rounded-xl overflow-hidden bg-white'; $('logo').innerHTML = '<img src="favico.png" alt="BorrowBloc" class="w-full h-full object-cover" />'; };
   img.onerror = () => {
     try {
       const svg = lucide.createElement(lucide.icons.Hammer);
@@ -190,7 +219,7 @@ function setupBranding() {
       $('favicon').href = 'data:image/svg+xml,' + encodeURIComponent(icon);
     } catch (e) { console.warn('favicon fallback failed', e); }
   };
-  img.src = 'favico.png';
+  img.src = 'assets/image.png';
 }
 
 // ─── Accounts ──────────────────────────────────────────────────────────────
@@ -198,6 +227,7 @@ function allAccounts() {
   const extra = store.get('borrowbloc_accounts', []);
   return [...DEMO_ACCOUNTS, ...extra.filter(a => !DEMO_ACCOUNTS.some(d => sameName(d.name, a.name)))];
 }
+function accountFor(name) { return allAccounts().find(a => sameName(a.name, name)); }
 function avatarColor(name) {
   let h = 0; for (const c of name || '') h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
@@ -294,9 +324,12 @@ function renderAccount() {
   };
   const mine = tools.filter(t => t.status === 'Checked Out' && sameName(t.borrower, user.name));
   const late = mine.filter(isOverdue).length;
+  const ready = tools.find(t => isMe(heldFor(t)));
   $('greeting').textContent = late
-    ? `Hi ${user.name.split(' ')[0]}, ${late} of your loans ${late === 1 ? 'is' : 'are'} overdue`
-    : `Hi ${user.name.split(' ')[0]}, what are you building today?`;
+    ? `Hi ${firstName(user.name)}, ${late} of your loans ${late === 1 ? 'is' : 'are'} overdue`
+    : ready
+      ? `Hi ${firstName(user.name)}, the ${ready.name} is ready for you!`
+      : `Hi ${firstName(user.name)}, what are you building today?`;
 }
 document.addEventListener('click', () => $('acctMenu')?.classList.add('hidden'));
 
@@ -347,17 +380,20 @@ function photoPicker(inputId, previewId, initial = '') {
 
 // ─── Data layer ────────────────────────────────────────────────────────────
 function loadLocal() {
+  loans = store.get('borrowbloc_loans', null) || mockLoans();
   const saved = store.get('borrowbloc', null);
-  if (!saved) return structuredClone(MOCK_DATA);
-  // Data saved by an older version has no photos or owners; fill them from the samples.
-  return saved.map(normalize).map(t => {
-    const m = MOCK_DATA.find(m => m.id === t.id && m.name === t.name);
-    return m ? { ...t, photo: t.photo || m.photo, owner: t.owner || m.owner } : t;
+  if (!saved) return structuredClone(MOCK_DATA).map(normalize);
+  // Data saved by an older version lacks photos, owners or waitlists; fill them from the samples.
+  return saved.map(r => {
+    const m = MOCK_DATA.find(m => m.id === r.id && m.name === r.name);
+    return normalize(m ? { ...r, photo: r.photo || m.photo, owner: r.owner || m.owner, waitlist: r.waitlist ?? m.waitlist } : r);
   });
 }
 function saveLocal() {
-  try { localStorage.setItem('borrowbloc', JSON.stringify(tools)); }
-  catch { toast('Browser storage is full, photo not saved locally', true); }
+  try {
+    localStorage.setItem('borrowbloc', JSON.stringify(tools));
+    localStorage.setItem('borrowbloc_loans', JSON.stringify(loans));
+  } catch { toast('Browser storage is full, photo not saved locally', true); }
 }
 
 async function fetchTools() {
@@ -368,6 +404,8 @@ async function fetchTools() {
     if (!Array.isArray(data.tools)) throw new Error('bad payload');
     const before = JSON.stringify(tools);
     const next = data.tools.map(normalize);
+    const nextLoans = Array.isArray(data.loans) ? data.loans : loans;
+    if (!busy && JSON.stringify(nextLoans) !== JSON.stringify(loans)) { loans = nextLoans; if (JSON.stringify(next) === before) render(); }
     if (!busy && JSON.stringify(next) !== before) {
       // Highlight whichever card changed remotely (e.g. someone edited the sheet).
       const changed = next.find(n => { const o = tools.find(t => t.id === n.id); return !o || JSON.stringify(o) !== JSON.stringify(n); });
@@ -393,6 +431,8 @@ function normalize(r) {
     due: blank(r.due).slice(0, 10),
     owner: blank(r.owner),
     photo: safePhoto(r.photo),
+    waitlist: (Array.isArray(r.waitlist) ? r.waitlist : String(r.waitlist || '').split(','))
+      .map(n => String(n).trim()).filter(n => n && n !== '—'),
   };
 }
 
@@ -417,18 +457,48 @@ async function write(action, payload) {
 // ─── Actions ───────────────────────────────────────────────────────────────
 async function checkout(id, due) {
   const t = tools.find(t => t.id === id); const prev = { ...t };
-  Object.assign(t, { status: 'Checked Out', borrower: user.name, due });
+  Object.assign(t, { status: 'Checked Out', borrower: user.name, due, waitlist: t.waitlist.filter(n => !isMe(n)) });
+  loans.push({ date: todayISO(), toolId: id, tool: t.name, category: t.category, borrower: user.name, owner: t.owner });
   flashId = id; closeModal(); render();
   if (await write('checkout', { id, borrower: user.name, due })) toast(`${t.name} is yours until ${fmtDate(due)}. Enjoy!`);
-  else { Object.assign(t, prev); render(); }
+  else { Object.assign(t, prev); loans.pop(); render(); }
 }
 
 async function giveBack(id) {
   const t = tools.find(t => t.id === id); const prev = { ...t };
+  const returner = t.borrower;
   Object.assign(t, { status: 'Available', borrower: '', due: '' });
   flashId = id; closeModal(); render();
-  if (await write('return', { id })) toast(`Thanks for returning the ${t.name}!`);
-  else { Object.assign(t, prev); render(); }
+  if (!(await write('return', { id }))) { Object.assign(t, prev); render(); return; }
+  const next = t.waitlist[0];
+  if (!next) return toast(`Thanks for returning the ${t.name}!`);
+  // Hand-off: offer to tell the next person in line that it's back.
+  const home = accountFor(t.owner)?.home;
+  const msg = `Hi ${firstName(next)}! The ${t.name} is back${t.owner ? ` at ${firstName(t.owner)}'s${home ? ` (${home})` : ''}` : ''} and you're first in line on BorrowBloc. It's held for you, grab it when you're ready!`;
+  openModal(`
+    <div class="p-6 space-y-4">
+      <div class="flex items-start justify-between">
+        <div><div class="font-semibold text-lg">Thanks${isMe(returner) ? '' : ` for logging it`}! 🙌</div>
+        <div class="text-sm text-slate-500">${esc(t.name)} is now held for <b>${esc(next)}</b>, first in line.</div></div>
+        <button data-close class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      ${nudgeHTML(next, msg, `Let ${esc(firstName(next))} know`)}
+    </div>`, false);
+}
+
+async function joinWaitlist(id) {
+  const t = tools.find(t => t.id === id);
+  if (t.waitlist.some(isMe)) return;
+  t.waitlist.push(user.name); render(); openTool(id);
+  if (await write('join', { id, name: user.name })) toast(`You're #${t.waitlist.length} in line for the ${t.name}`);
+  else { t.waitlist = t.waitlist.filter(n => !isMe(n)); render(); openTool(id); }
+}
+
+async function leaveWaitlist(id, name) {
+  const t = tools.find(t => t.id === id); const prev = [...t.waitlist];
+  t.waitlist = t.waitlist.filter(n => !sameName(n, name)); render(); openTool(id);
+  if (await write('leave', { id, name })) toast(isMe(name) ? 'You left the line' : `Hold released, ${firstName(t.waitlist[0] || '') || 'anyone'} can borrow it now`);
+  else { t.waitlist = prev; render(); openTool(id); }
 }
 
 async function addTool(name, category, photo) {
@@ -463,7 +533,63 @@ function renderStats() {
   $('statTotal').textContent = tools.length;
   $('statAvail').textContent = tools.length - out.length;
   $('statOut').textContent = out.length;
-  $('statSaved').textContent = '$' + out.reduce((s, t) => s + meta(t.category).value, 0).toLocaleString();
+  $('statSaved').textContent = money(loans.reduce((s, l) => s + meta(l.category).value, 0));
+  $('statSavedSub').textContent = `across ${loans.length} loans between neighbors`;
+}
+
+function renderImpact() {
+  const sum = (list, k) => list.reduce((s, l) => s + meta(l.category)[k], 0);
+  const byOwner = {}, byTool = {};
+  for (const l of loans) {
+    if (l.owner) (byOwner[l.owner] ??= { name: l.owner, n: 0, saved: 0 }), byOwner[l.owner].n++, byOwner[l.owner].saved += meta(l.category).value;
+    (byTool[l.toolId] ??= { id: l.toolId, name: l.tool, n: 0 }).n++;
+  }
+  const sharers = Object.values(byOwner).sort((a, b) => b.n - a.n).slice(0, 5);
+  const popular = Object.values(byTool).sort((a, b) => b.n - a.n).slice(0, 5);
+  const medal = i => ['🥇', '🥈', '🥉'][i] || `<span class="text-slate-400 text-sm">#${i + 1}</span>`;
+  const mine = user ? loans.filter(l => isMe(l.borrower)) : [];
+  const lent = user ? loans.filter(l => isMe(l.owner)) : [];
+  const tile = (value, label, icon) => `
+    <div class="bg-white/10 rounded-xl p-3">
+      <div class="text-2xl font-bold">${value}</div>
+      <div class="text-xs text-emerald-100 flex items-center gap-1"><i data-lucide="${icon}" class="w-3.5 h-3.5"></i>${label}</div>
+    </div>`;
+  $('impact').innerHTML = `
+    <h2 class="text-xl font-bold mb-4 flex items-center gap-2"><i data-lucide="leaf" class="w-5 h-5 text-emerald-600"></i>Community impact</h2>
+    <div class="grid lg:grid-cols-3 gap-4">
+      <div class="bg-gradient-to-br from-emerald-700 to-teal-700 text-white rounded-2xl p-5 flex flex-col">
+        <div class="grid grid-cols-2 gap-3">
+          ${tile(loans.length, 'loans made', 'repeat')}
+          ${tile(money(sum(loans, 'value')), 'not spent', 'piggy-bank')}
+          ${tile(Math.round(sum(loans, 'co2')).toLocaleString() + ' kg', 'CO₂e avoided', 'cloud')}
+          ${tile(Math.round(sum(loans, 'kg')).toLocaleString() + ' kg', 'kept from landfill', 'trash-2')}
+        </div>
+        ${user ? `<div class="mt-4 text-sm bg-white/10 rounded-xl p-3">
+          <b>You:</b> borrowed ${mine.length}× (saved ${money(sum(mine, 'value'))}) · your tools lent ${lent.length}×
+        </div>` : ''}
+        <div class="mt-auto pt-4 text-[11px] text-emerald-100/80">Estimates: each loan counts as one new tool not bought, using typical retail prices and manufacturing footprints.</div>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-5">
+        <div class="font-semibold mb-3 flex items-center gap-2"><i data-lucide="trophy" class="w-4 h-4 text-amber-500"></i>Top sharers</div>
+        <ol class="space-y-3">${sharers.map((o, i) => `
+          <li class="flex items-center gap-3">
+            <span class="w-6 text-center">${medal(i)}</span>${avatar(o.name)}
+            <span class="flex-1 min-w-0"><span class="block font-medium truncate">${isMe(o.name) ? 'You' : esc(o.name)}</span>
+            <span class="block text-xs text-slate-500">lent ${o.n}× · saved neighbors ${money(o.saved)}</span></span>
+          </li>`).join('') || '<li class="text-sm text-slate-500">No loans yet.</li>'}</ol>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-5">
+        <div class="font-semibold mb-3 flex items-center gap-2"><i data-lucide="flame" class="w-4 h-4 text-rose-500"></i>Most borrowed</div>
+        <ol class="space-y-3">${popular.map(p => {
+          const t = tools.find(t => t.id === p.id) || { name: p.name, category: '', photo: '' };
+          return `
+          <li><button data-id="${p.id}" class="w-full flex items-center gap-3 text-left hover:bg-slate-50 rounded-xl -m-1 p-1">
+            <span class="w-10 h-10 rounded-lg overflow-hidden shrink-0">${photoHTML(t, 'w-5 h-5')}</span>
+            <span class="flex-1 min-w-0 font-medium truncate">${esc(t.name)}</span>
+            <span class="text-sm text-slate-500 shrink-0">${p.n} loans</span>
+          </button></li>`; }).join('') || '<li class="text-sm text-slate-500">No loans yet.</li>'}</ol>
+      </div>
+    </div>`;
 }
 
 function renderFilters() {
@@ -474,6 +600,10 @@ function renderFilters() {
 
 function badgeHTML(t) {
   const pill = (bg, dot, label) => `<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full shadow-sm ${bg}"><span class="w-1.5 h-1.5 rounded-full ${dot}"></span>${label}</span>`;
+  const held = heldFor(t);
+  if (held) return isMe(held)
+    ? pill('bg-violet-100 text-violet-700', 'bg-violet-500', 'Held for you')
+    : pill('bg-violet-100 text-violet-700', 'bg-violet-500', `Held for ${esc(firstName(held))}`);
   if (t.status === 'Available') return pill('bg-emerald-100 text-emerald-700', 'bg-emerald-500', 'Available');
   if (isOverdue(t)) return pill('bg-red-100 text-red-700', 'bg-red-500', 'Overdue');
   return pill('bg-amber-100 text-amber-700', 'bg-amber-500', 'Checked Out');
@@ -483,8 +613,11 @@ function cardHTML(t) {
   const avail = t.status === 'Available';
   const overdue = isOverdue(t);
   const mine = user && sameName(t.borrower, user.name);
-  const footer = avail
-    ? `<span class="text-emerald-700 font-medium inline-flex items-center gap-1">Borrow <i data-lucide="arrow-right" class="w-4 h-4"></i></span>`
+  const held = heldFor(t);
+  const footer = held && !isMe(held)
+    ? `<span class="text-violet-700 font-medium inline-flex items-center gap-1"><i data-lucide="users" class="w-4 h-4"></i>Join the line</span>`
+    : avail
+    ? `<span class="text-emerald-700 font-medium inline-flex items-center gap-1">${held ? 'Your turn' : 'Borrow'} <i data-lucide="arrow-right" class="w-4 h-4"></i></span>`
     : `<span class="inline-flex items-center gap-1.5 text-slate-600 min-w-0"><i data-lucide="user" class="w-4 h-4 shrink-0"></i><span class="truncate">${mine ? 'You' : esc(t.borrower)}</span></span>
        <span class="shrink-0 ${overdue ? 'text-red-600 font-medium' : 'text-slate-500'}">${t.due ? fmtDate(t.due) : ''}</span>`;
   return `
@@ -492,6 +625,7 @@ function cardHTML(t) {
       <div class="relative aspect-square w-full overflow-hidden ${avail ? '' : 'grayscale-[40%]'}">
         ${photoHTML(t)}
         <div class="absolute top-2 left-2">${badgeHTML(t)}</div>
+        ${t.waitlist.length ? `<div class="absolute bottom-2 right-2 inline-flex items-center gap-1 text-xs font-medium bg-white/90 text-slate-700 px-2 py-1 rounded-full shadow-sm"><i data-lucide="users" class="w-3.5 h-3.5"></i>${t.waitlist.length} waiting</div>` : ''}
       </div>
       <div class="p-3 sm:p-4 flex-1 flex flex-col">
         <div class="font-semibold leading-snug truncate">${esc(t.name)}</div>
@@ -508,7 +642,7 @@ function render() {
   const q = query.trim().toLowerCase();
   const list = tools
     .filter(t => activeCategory === 'All'
-      || (activeCategory === 'Mine' ? user && (sameName(t.borrower, user.name) || sameName(t.owner, user.name)) : t.category === activeCategory))
+      || (activeCategory === 'Mine' ? user && (isMe(t.borrower) || isMe(t.owner) || t.waitlist.some(isMe)) : t.category === activeCategory))
     .filter(t => !q || [t.name, t.category, t.borrower, t.owner].some(s => s.toLowerCase().includes(q)))
     .sort((a, b) => (a.status === b.status ? a.id - b.id : a.status === 'Available' ? -1 : 1));
   $('grid').innerHTML = list.map(cardHTML).join('');
@@ -516,6 +650,7 @@ function render() {
   $('emptyText').textContent = activeCategory === 'Mine' && !q
     ? "You haven't borrowed or shared anything yet."
     : 'No tools match your search.';
+  renderImpact();
   lucide.createIcons();
   flashId = null;
 }
@@ -553,6 +688,43 @@ function modalHero(t) {
     </div>`;
 }
 
+function waitlistHTML(t) {
+  const pos = t.waitlist.findIndex(isMe);
+  const list = t.waitlist.length
+    ? `<ol class="space-y-2">${t.waitlist.map((n, i) => `
+        <li class="flex items-center gap-2 text-sm"><span class="w-5 text-slate-400">${i + 1}.</span>${avatar(n, 'w-6 h-6 text-[10px]')}<span class="${isMe(n) ? 'font-semibold' : ''}">${isMe(n) ? 'You' : esc(n)}</span></li>`).join('')}</ol>`
+    : '<div class="text-sm text-slate-500">Nobody waiting yet.</div>';
+  let btn = '';
+  if (!isMe(t.borrower) && !isMe(t.owner)) {
+    btn = pos >= 0
+      ? `<button data-action="leave" data-tool="${t.id}" class="w-full border border-slate-200 hover:border-slate-400 text-sm font-medium py-2.5 rounded-xl">Leave the line (you're #${pos + 1})</button>`
+      : `<button data-action="join" data-tool="${t.id}" class="w-full bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold py-2.5 rounded-xl inline-flex items-center justify-center gap-2"><i data-lucide="user-plus" class="w-4 h-4"></i>${user ? 'Join the line' : 'Sign in to join the line'}</button>`;
+  }
+  return `
+    <div class="rounded-xl border border-slate-200 p-4 space-y-3">
+      <div class="text-sm font-semibold flex items-center gap-2"><i data-lucide="users" class="w-4 h-4 text-violet-600"></i>Waitlist${t.waitlist.length ? ` · ${t.waitlist.length}` : ''}</div>
+      ${list}${btn}
+    </div>`;
+}
+
+// Prefilled WhatsApp / SMS links; nothing is sent until the user hits send in their app.
+function nudgeHTML(to, text, label) {
+  const phone = (accountFor(to)?.phone || '').replace(/[^\d+]/g, '');
+  const enc = encodeURIComponent(text);
+  const wa = `https://wa.me/${phone.replace('+', '')}?text=${enc}`;
+  const sms = `sms:${phone}?&body=${enc}`;
+  return `
+    <div class="rounded-xl border border-slate-200 p-4 space-y-3">
+      <div class="text-sm font-semibold flex items-center gap-2"><i data-lucide="bell-ring" class="w-4 h-4 text-amber-500"></i>${label}</div>
+      <div class="text-sm text-slate-600 bg-slate-50 rounded-lg p-3">${esc(text)}</div>
+      <div class="grid grid-cols-3 gap-2 text-sm font-medium">
+        <a href="${esc(wa)}" target="_blank" rel="noopener" class="inline-flex items-center justify-center gap-1.5 bg-[#25D366] hover:brightness-95 text-white py-2 rounded-lg"><i data-lucide="message-circle" class="w-4 h-4"></i>WhatsApp</a>
+        <a href="${esc(sms)}" class="inline-flex items-center justify-center gap-1.5 bg-sky-600 hover:bg-sky-700 text-white py-2 rounded-lg"><i data-lucide="smartphone" class="w-4 h-4"></i>SMS</a>
+        <button data-action="copy" data-text="${esc(text)}" class="inline-flex items-center justify-center gap-1.5 border border-slate-200 hover:border-slate-400 py-2 rounded-lg"><i data-lucide="copy" class="w-4 h-4"></i>Copy</button>
+      </div>
+    </div>`;
+}
+
 function wireOwnerPhoto(id) {
   const input = $('ownerPhoto');
   if (!input) return;
@@ -567,9 +739,20 @@ function wireOwnerPhoto(id) {
 function openTool(id) {
   const t = tools.find(t => t.id === id);
   if (!t) return;
-  if (t.status === 'Available') {
+  const held = heldFor(t);
+  if (held && !isMe(held)) {
+    openModal(`${modalHero(t)}
+      <div class="p-6 space-y-4">
+        <div class="rounded-xl bg-violet-50 text-violet-800 p-4 text-sm">
+          Just returned and held for <b>${esc(held)}</b>, who's first in line.
+        </div>
+        ${waitlistHTML(t)}
+        ${isMe(t.owner) ? `<button data-action="release" data-tool="${t.id}" class="w-full text-sm text-slate-500 hover:text-slate-800 underline">Release hold (skip ${esc(firstName(held))})</button>` : ''}
+      </div>`, false);
+  } else if (t.status === 'Available') {
     openModal(`${modalHero(t)}
       <form id="checkoutForm" class="p-6 space-y-4">
+        ${held ? `<div class="rounded-xl bg-violet-50 text-violet-800 p-3 text-sm">🎉 It's your turn, this one was held for you.</div>` : ''}
         ${user
           ? `<div class="flex items-center gap-2 text-sm text-slate-600">${avatar(user.name, 'w-6 h-6 text-[10px]')}Borrowing as <b>${esc(user.name)}</b></div>
              <label class="block">
@@ -589,7 +772,9 @@ function openTool(id) {
   } else {
     const overdue = isOverdue(t);
     const canReturn = user && (sameName(t.borrower, user.name) || sameName(t.owner, user.name));
-    const who = user && sameName(t.borrower, user.name) ? 'you' : esc(t.borrower);
+    const who = isMe(t.borrower) ? 'you' : esc(t.borrower);
+    const canNudge = overdue && user && !isMe(t.borrower) && (isMe(t.owner) || t.waitlist.some(isMe));
+    const nudgeMsg = `Hi ${firstName(t.borrower)}! Friendly reminder from BorrowBloc: ${isMe(t.owner) ? 'my' : 'the'} ${t.name}${t.owner && !isMe(t.owner) ? ` (${firstName(t.owner)}'s)` : ''} was due back ${fmtDate(t.due)}.${t.waitlist.length ? ` ${t.waitlist.length} ${t.waitlist.length === 1 ? 'neighbor is' : 'neighbors are'} waiting for it.` : ''} Could you drop it back when you get a chance? Thanks!`;
     openModal(`${modalHero(t)}
       <div class="p-6 space-y-4">
         <div class="rounded-xl ${overdue ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-800'} p-4 text-sm">
@@ -600,6 +785,8 @@ function openTool(id) {
           : user
             ? `<div class="text-sm text-slate-500 text-center">Only ${esc(t.borrower)}${t.owner ? ` or ${esc(t.owner)}` : ''} can mark this returned.</div>`
             : `<button id="returnLogin" class="w-full border border-slate-200 hover:border-slate-400 font-semibold py-3 rounded-xl inline-flex items-center justify-center gap-2"><i data-lucide="log-in" class="w-5 h-5"></i>Sign in to return</button>`}
+        ${canNudge ? nudgeHTML(t.borrower, nudgeMsg, `Nudge ${esc(firstName(t.borrower))}`) : ''}
+        ${waitlistHTML(t)}
       </div>`, false);
     if ($('returnBtn')) $('returnBtn').onclick = () => giveBack(id);
     if ($('returnLogin')) $('returnLogin').onclick = () => requireUser(() => openTool(id));
@@ -648,6 +835,19 @@ function toast(msg, error = false) {
 
 // ─── Wiring ────────────────────────────────────────────────────────────────
 $('grid').addEventListener('click', e => { const c = e.target.closest('[data-id]'); if (c) openTool(Number(c.dataset.id)); });
+$('impact').addEventListener('click', e => { const c = e.target.closest('[data-id]'); if (c) openTool(Number(c.dataset.id)); });
+$('modalBody').addEventListener('click', async e => {
+  const b = e.target.closest('[data-action]'); if (!b) return;
+  const id = Number(b.dataset.tool);
+  const t = tools.find(t => t.id === id);
+  if (b.dataset.action === 'join') requireUser(() => joinWaitlist(id));
+  if (b.dataset.action === 'leave') leaveWaitlist(id, user.name);
+  if (b.dataset.action === 'release') leaveWaitlist(id, t.waitlist[0]);
+  if (b.dataset.action === 'copy') {
+    try { await navigator.clipboard.writeText(b.dataset.text); toast('Message copied'); }
+    catch { toast('Could not copy, select the text instead', true); }
+  }
+});
 $('filters').addEventListener('click', e => { const b = e.target.closest('[data-cat]'); if (b) { activeCategory = b.dataset.cat; render(); } });
 $('search').addEventListener('input', e => { query = e.target.value; render(); });
 $('addBtn').onclick = () => requireUser(openAdd);

@@ -31,7 +31,10 @@ aibuild259/
 ├── index.html          # Single-file frontend & dashboard logic (runs in demo mode out of the box)
 ├── apps-script/
 │   └── Code.gs         # Google Apps Script backend for the Inventory sheet
-├── assets/tools/       # Sample tool photos (Wikimedia Commons, see CREDITS.md)
+├── assets/
+│   ├── favico.png      # Navbar logo
+│   ├── image.png       # Browser-tab favicon
+│   └── tools/          # Sample tool photos (Wikimedia Commons, see CREDITS.md)
 ├── specsheet.txt       # Hackathon spec
 └── README.md           # Project documentation
 ```
@@ -41,6 +44,6 @@ aibuild259/
 ## Quick Start
 
 1. Open `index.html` in a browser. With no backend configured it runs on demo data.
-2. To go live: create a Google Sheet with an `Inventory` tab (headers: ID, Tool Name, Category, Status, Borrower, Due Date, Photo, Owner).
+2. To go live: create a Google Sheet with an `Inventory` tab (headers: ID, Tool Name, Category, Status, Borrower, Due Date, Photo, Owner, Waitlist). A `Loans` tab is created automatically on the first checkout.
 3. Extensions → Apps Script → paste `apps-script/Code.gs` → Deploy as a Web app (Execute as: Me, Access: Anyone).
 4. Paste the `/exec` URL into `SHEET_ENDPOINT` at the top of the script in `index.html`.
